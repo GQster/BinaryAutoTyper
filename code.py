@@ -1,12 +1,14 @@
 import board
 import time
+import usb_hid
 from digitalio import DigitalInOut, Pull
 from adafruit_debouncer import Debouncer
-import usb_hid
 from adafruit_hid.keyboard import Keyboard
+from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
 from adafruit_hid.keycode import Keycode
 
 kpd = Keyboard(usb_hid.devices)
+keyboard_layout = KeyboardLayoutUS(kpd)
 
 CLEAR_TIMEOUT = 2  # Clear the binary input after 2 seconds of inactivity
 
@@ -61,5 +63,5 @@ while True:
             if len(binary_input) == 8:  # Assuming 8-bit binary input
                 char = binary_to_char(binary_input)
                 print(f"Sending character: {char}")
-                kpd.send(ord(char))
+                keyboard_layout.write(char)
                 binary_input = ""  # Reset the binary input after sending the character
