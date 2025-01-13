@@ -56,3 +56,6 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 ## NOTE:
 I was haveing issues importing the libraries correctly and didn't want to spend the time to fix it. So I just coppied the `adafruit_ticks` and `adafruit_debounce` files into the root folder. This work fine, but is messy. 
 
+[Binary to ASCII table](https://www.ibm.com/docs/en/aix/7.2?topic=adapters-ascii-decimal-hexadecimal-octal-binary-conversion-table)
+
+
