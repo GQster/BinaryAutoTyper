@@ -37,7 +37,7 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 - Install circuitpython to the RP2040
 - Copy the `adafruit_debouncer.py` & `adafruit_ticks.py` to the root folder. ( I got ticks from [here](https://github.com/adafruit/Adafruit_CircuitPython_Ticks/blob/main/adafruit_ticks.py) and debouncer from [here](https://github.com/adafruit/Adafruit_CircuitPython_Debouncer/blob/main/adafruit_debouncer.py) ) (Did this as I couldnt get the lib for these to work)
 - In the adafruit-circuitpython*****.zip [I got from here](https://circuitpython.org/libraries), copy the `lib/adafruit_hid` folder to the rp2040's lib folder.
-- Copy the `code.py` [file](https://github.com/GQster/rp240ZeroMacroPad/blob/master/code.py) to the root of the rp2040
+- Copy the `code.py` [file](https://github.com/GQster/BinaryAutoTyper/blob/master/code.py) to the root of the rp2040
 
 
 
@@ -54,22 +54,6 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 
 
 
-To change what the keys do you will want to edit :
-
-    KEYMAP = (
-        ("Paste", [MODIFIER, Keycode.V]),
-        ("Copy", [MODIFIER, Keycode.C]),
-        ("Select all", [MODIFIER, Keycode.A])
-    )
-
-[Here is the documentation for the key codes](https://docs.circuitpython.org/projects/hid/en/latest/)
-
-
-
 ## NOTE:
-I was haveing issues importing the libraries correctly and didn't want to spend the time to fix it. So I just coppied the `adafruit_ticks` and `adafruit_debounce` files into `code.py`. This work fine, but is messy. 
+I was haveing issues importing the libraries correctly and didn't want to spend the time to fix it. So I just coppied the `adafruit_ticks` and `adafruit_debounce` files into the root folder. This work fine, but is messy. 
 
-
-
-### References:
-I took inspairation (and the stl files) from [this instructable](https://www.instructables.com/Macropad-for-Keyboard-Shortcuts/) but swapped to a RP2040 as it is smaller and I had a few already.
