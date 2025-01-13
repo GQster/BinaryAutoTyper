@@ -10,9 +10,7 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 
 
 
-
-
-![Alt Text](imgs/finished.jpg)
+<img src="imgs/keyboard.jpg" alt="drawing" width="200"/>
 
 [RP2040 Info](https://www.waveshare.com/wiki/RP2040-Zero)
 
@@ -50,7 +48,8 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
     board.GP2,
     board.GP3
 )`
-![Alt Text](imgs/internals.jpg)
+
+<img src="imgs/internals.jpg" alt="drawing" width="200"/>
 
 
 
