@@ -35,7 +35,7 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 
 
 ### Steps:
-- Install circuitpython to the RP2040
+- Install circuitpython to the RP2040 [I used this one](https://github.com/GQster/BinaryAutoTyper/blob/main/adafruit-circuitpython-waveshare_rp2040_zero-en_US-9.2.2.uf2)
 - Copy the `adafruit_debouncer.py` & `adafruit_ticks.py` to the root folder. ( I got ticks from [here](https://github.com/adafruit/Adafruit_CircuitPython_Ticks/blob/main/adafruit_ticks.py) and debouncer from [here](https://github.com/adafruit/Adafruit_CircuitPython_Debouncer/blob/main/adafruit_debouncer.py) ) (Did this as I couldnt get the lib for these to work)
 - In the adafruit-circuitpython*****.zip [I got from here](https://circuitpython.org/libraries), copy the `lib/adafruit_hid` folder to the rp2040's lib folder.
 - Copy the `code.py` [file](https://github.com/GQster/BinaryAutoTyper/blob/master/code.py) to the root of the rp2040
