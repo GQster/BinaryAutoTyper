@@ -15,11 +15,14 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 [RP2040 Info](https://www.waveshare.com/wiki/RP2040-Zero)
 
 ### BOM:
-  - 1 rp2040-zero
+  - 2 rp2040-zero
   - 2 Mechanical keyboard switches
-  - 2 key caps
+  - 2 keycaps
+  - 2 Electric KK-0520B solenoid (5V,  600ma, 5mm travel, 0.2-5N)
   - some wire
   - 3D printed housing
+  - 4 small bolts
+  - 6 6x2mm magnets (optional)
 
 ### TOOLS:
   - Solder
