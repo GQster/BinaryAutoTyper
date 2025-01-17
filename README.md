@@ -20,7 +20,7 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
   - 2 keycaps
   - 2 2N2222 transistors (or similar)
   - 2 1N5818 diodes (or similar)
-  - 2 10k resistors
+  - 2 325 resistors
   - 2 Electric KK-0520B solenoid (5V,  600ma, 5mm travel, 0.2-5N)
   - some wire
   - 3D printed housing
