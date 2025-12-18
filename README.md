@@ -15,14 +15,24 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 [RP2040 Info](https://www.waveshare.com/wiki/RP2040-Zero)
 
 ### BOM:
-  - 2 rp2040-zero
+  Binary Keyboard:
+  - 1 rp2040-zero
   - 2 Mechanical keyboard switches
   - 2 keycaps
-  - 2 2N2222 transistors (or similar)
+  - wire (I used 26 AWG)
+
+  Binary Keyboard Presser:
+  - 1 rp2040-zero
+  - 2 a03400a transistors (or similar)
   - 2 1N5818 diodes (or similar)
-  - 2 325 resistors
+  - 2 100K Ohm resistors
+  - 2 150-220 Ohm resistors
+  - 2 0.1 uF caps
+  - 1 2000 uF cap
   - 2 Electric KK-0520B solenoid (5V,  600ma, 5mm travel, 0.2-5N)
-  - some wire
+  - wire (I used 22 awg)
+ 
+ Other:
   - 3D printed housing
   - 4 small bolts
   - 6 6x2mm magnets (optional)
@@ -37,11 +47,13 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 
 
 
-### Steps:
-- Install circuitpython to the RP2040 [I used this one](https://github.com/GQster/BinaryAutoTyper/blob/main/adafruit-circuitpython-waveshare_rp2040_zero-en_US-9.2.2.uf2)
+
+## Steps:
+### Binary Keyboard:
+- Install circuitpython to the RP2040 [I used this one](https://github.com/GQster/BinaryAutoTyper/blob/main/circuitPython10x/adafruit-circuitpython-waveshare_rp2040_zero-en_US-10.0.3.uf2)
 - Copy the `adafruit_debouncer.py` & `adafruit_ticks.py` to the root folder. ( I got ticks from [here](https://github.com/adafruit/Adafruit_CircuitPython_Ticks/blob/main/adafruit_ticks.py) and debouncer from [here](https://github.com/adafruit/Adafruit_CircuitPython_Debouncer/blob/main/adafruit_debouncer.py) ) (Did this as I couldn't get the lib for these to work)
-- In the adafruit-circuitpython*****.zip [I got from here](https://circuitpython.org/libraries), copy the `lib/adafruit_hid` folder to the rp2040's lib folder.
-- Copy the `code.py` [file](https://github.com/GQster/BinaryAutoTyper/blob/master/code.py) to the root of the rp2040
+- In the adafruit-circuitpython*****.zip [I got from here](https://circuitpython.org/libraries), copy the `lib/adafruit_hid` folder to the rp2040's `lib/` folder.
+- Copy the `code.py` [file](https://github.com/GQster/BinaryAutoTyper/blob/main/BinaryKeyboard/code.py) to the root of the rp2040
 
 
 
@@ -59,7 +71,7 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 
 
 
-## NOTE:
+### NOTE:
 I was having issues importing the libraries correctly and didn't want to spend the time to fix it. So I just copied the `adafruit_ticks` and `adafruit_debounce` files into the root folder. This work fine, but is messy. 
 
 [Binary to ASCII table](https://www.ibm.com/docs/en/aix/7.2?topic=adapters-ascii-decimal-hexadecimal-octal-binary-conversion-table)
@@ -67,3 +79,7 @@ I was having issues importing the libraries correctly and didn't want to spend t
 If you want to read more on the circuitry involved in this project [this is a good resource](http://www.robotsforfun.com/webpages/electromagnet.html)
 
 
+### Binary Keyboard Presser
+- Install circuitpython to the RP2040 [I used this one](https://github.com/GQster/BinaryAutoTyper/blob/main/circuitPython10x/adafruit-circuitpython-waveshare_rp2040_zero-en_US-10.0.3.uf2)
+- In the adafruit-circuitpython*****.zip [I got from here](https://circuitpython.org/libraries), copy the `lib/adafruit_hid` folder to the rp2040's `lib/` folder.
+- Copy the `code.py` [file](https://github.com/GQster/BinaryAutoTyper/blob/main/keyPresser/code.py) to the root of the rp2040
