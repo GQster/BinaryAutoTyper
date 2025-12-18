@@ -69,7 +69,7 @@ while True:
                 last_key_time = time.monotonic()
                 binary_input += KEYMAP[i][0]
                 print(f"Current binary input: {binary_input}")
-                if len(binary_input) == 8:  # Assuming 8-bit binary input
+                if len(binary_input) == 8:  # Assuming 8-bit binary input           MSB first
                     char = binary_to_char(binary_input)
                     if char:  # Only send the character if it's valid
                         print(f"Sending character: {char}")
