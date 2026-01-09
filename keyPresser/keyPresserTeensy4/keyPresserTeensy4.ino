@@ -7,7 +7,7 @@ USBHost usb;
 USBHub hub1(usb);
 KeyboardController keyboard(usb);
 
-// REQUIRED for keyboards to function
+// REQUIRED for keyboards
 USBHIDParser hid1(usb);
 USBHIDParser hid2(usb);
 USBHIDParser hid3(usb);
@@ -18,85 +18,139 @@ USBHIDParser hid3(usb);
 constexpr int SOL0_PIN = 2;
 constexpr int SOL1_PIN = 3;
 
-// Timing (ms)
-constexpr int PULSE_MS = 35;  // experiment down to 15-20?
-constexpr int GAP_MS   = 35;  // experimetn down to 10
+// -------------------------
+// Timing (microseconds)
+// Tune these carefully
+// -------------------------
+constexpr uint32_t PULSE_US = 35000; // solenoid on       // experiment down to 20000
+constexpr uint32_t GAP_US   = 35000; // off between bits  // experiment down to 10000
 
-// Track last key to suppress repeats
-uint8_t lastKey = 0;
+// ISR tick period
+constexpr uint32_t TICK_US = 50;
+
+// Derived timing (ticks)
+constexpr uint32_t PULSE_TICKS = PULSE_US / TICK_US;
+constexpr uint32_t GAP_TICKS   = GAP_US   / TICK_US;
 
 // -------------------------
-// Solenoid helpers
+// Ring buffer
 // -------------------------
-void pulse(int pin) {
-  digitalWrite(pin, HIGH);
-  delay(PULSE_MS);
-  digitalWrite(pin, LOW);
-  delay(GAP_MS);
+constexpr int BUF_SIZE = 256;
+volatile uint8_t buf[BUF_SIZE];
+volatile uint8_t head = 0;
+volatile uint8_t tail = 0;
+
+inline bool bufEmpty() {
+  return head == tail;
 }
 
-void sendByte(uint8_t byteVal) {
-  for (int i = 7; i >= 0; i--) {
-    pulse((byteVal >> i) & 1 ? SOL1_PIN : SOL0_PIN);
-  }
+inline bool bufFull() {
+  return ((head + 1) % BUF_SIZE) == tail;
+}
+
+inline void bufPush(uint8_t v) {
+  if (bufFull()) return; // drop if overflow
+  buf[head] = v;
+  head = (head + 1) % BUF_SIZE;
+}
+
+inline bool bufPop(uint8_t &v) {
+  if (bufEmpty()) return false;
+  v = buf[tail];
+  tail = (tail + 1) % BUF_SIZE;
+  return true;
 }
 
 // -------------------------
-// HID → ASCII (with shift)
+// Solenoid state machine
 // -------------------------
-char hidToAscii(uint8_t key, uint8_t mods) {
-  bool shift = mods & (MODIFIERKEY_SHIFT | MODIFIERKEY_RIGHT_SHIFT);
+enum PulseState {
+  IDLE,
+  PULSE_ON,
+  PULSE_OFF
+};
 
-  // A–Z (HID 4–29)
-  if (key >= 4 && key <= 29) {
-    char c = 'a' + (key - 4);
-    return shift ? c - 32 : c;
-  }
+volatile PulseState pulseState = IDLE;
+volatile uint32_t tickCount = 0;
 
-  // 1–9,0 (HID 30–39)
-  const char nums[] = "1234567890";
-  const char shifted[] = "!@#$%^&*()";
-  if (key >= 30 && key <= 39)
-    return shift ? shifted[key - 30] : nums[key - 30];
+uint8_t currentByte = 0;
+volatile int bitIndex = -1;
+volatile int activePin = -1;
 
-  switch (key) {
-    case 44: return ' ';        // space
-    case 40: return '\n';       // enter
-    case 45: return shift ? '_' : '-';
-    case 46: return shift ? '+' : '=';
-    case 47: return shift ? '{' : '[';
-    case 48: return shift ? '}' : ']';
-    case 49: return shift ? '|' : '\\';
-    case 51: return shift ? ':' : ';';
-    case 52: return shift ? '"' : '\'';
-    case 53: return shift ? '~' : '`';
-    case 54: return shift ? '<' : ',';
-    case 55: return shift ? '>' : '.';
-    case 56: return shift ? '?' : '/';
-  }
+// -------------------------
+// Timer
+// -------------------------
+IntervalTimer solTimer;
 
+// -------------------------
+// ASCII mapping
+// -------------------------
+char keycodeToASCII(int key) {
+  if (key >= 0x20 && key <= 0x7E) return (char)key;
+  if (key == '\n') return '\n';
   return 0;
 }
 
 // -------------------------
-// RAW keyboard callbacks
+// Keyboard callbacks
 // -------------------------
-void onRawPress(uint8_t key) {
-  if (key == lastKey) return;
-  lastKey = key;
-
-  uint8_t mods = keyboard.getModifiers();
-  char c = hidToAscii(key, mods);
-
+void onKeyPress(int key) {
+  // Printable ASCII
+  char c = keycodeToASCII(key);
   if (c) {
-    Serial.print("Sending: ");
+    Serial.print("Queued ASCII: ");
     Serial.println(c);
-    sendByte((uint8_t)c);
+  } else {
+    Serial.print("Queued keycode: 0x");
+    Serial.println(key, HEX);
   }
+
+  bufPush((uint8_t)key);  // send raw keycode to solenoids
 }
 
-void onRawRelease(uint8_t key) {
-  if (key == lastKey) lastKey = 0;
+
+void onKeyRelease(int) {
+  // intentionally unused
+}
+
+// -------------------------
+// Solenoid ISR (HARD REAL-TIME)
+// -------------------------
+void solenoidISR() {
+  switch (pulseState) {
+
+    case IDLE:
+      if (!bufEmpty()) {
+        bufPop(currentByte);
+        bitIndex = 7;
+        tickCount = 0;
+        pulseState = PULSE_ON;
+      }
+      break;
+
+    case PULSE_ON:
+      if (tickCount == 0) {
+        bool bit = (currentByte >> bitIndex) & 1;
+        activePin = bit ? SOL1_PIN : SOL0_PIN;
+        digitalWriteFast(activePin, HIGH);
+        // Serial.print("PULSE ON pin "); Serial.print(activePin); Serial.print(" bit "); Serial.println(bit); //Debugging
+      }
+
+      if (++tickCount >= PULSE_TICKS) {
+        digitalWriteFast(activePin, LOW);
+        tickCount = 0;
+        pulseState = PULSE_OFF;
+      }
+      break;
+
+    case PULSE_OFF:
+      if (++tickCount >= GAP_TICKS) {
+        tickCount = 0;
+        bitIndex--;
+        pulseState = (bitIndex < 0) ? IDLE : PULSE_ON;
+      }
+      break;
+  }
 }
 
 // -------------------------
@@ -111,19 +165,22 @@ void setup() {
   Serial.begin(115200);
   while (!Serial && millis() < 2000) {}
 
-  keyboard.attachRawPress(onRawPress);
-  keyboard.attachRawRelease(onRawRelease);
+  keyboard.attachPress(onKeyPress);
+  keyboard.attachRelease(onKeyRelease);
 
   usb.begin();
 
-  Serial.println("USB host ready, waiting for keyboard...");
+  // Start solenoid timer
+  solTimer.begin(solenoidISR, TICK_US);
+
+  Serial.println("USB host ready — ISR-driven solenoid engine running");
 }
 
 // -------------------------
 // Loop
 // -------------------------
 void loop() {
-  usb.Task();
+  usb.Task();   // USB MUST be serviced frequently
 }
 
 

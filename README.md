@@ -48,7 +48,7 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 
 
 
-## Steps:
+# Steps:
 ### Binary Keyboard:
 - Install circuitpython to the RP2040 [I used this one](https://github.com/GQster/BinaryAutoTyper/blob/main/circuitPython10x/adafruit-circuitpython-waveshare_rp2040_zero-en_US-10.0.3.uf2)
 - Copy the `adafruit_debouncer.py` & `adafruit_ticks.py` to the root folder. ( I got ticks from [here](https://github.com/adafruit/Adafruit_CircuitPython_Ticks/blob/main/adafruit_ticks.py) and debouncer from [here](https://github.com/adafruit/Adafruit_CircuitPython_Debouncer/blob/main/adafruit_debouncer.py) ) (Did this as I couldn't get the lib for these to work)
@@ -71,7 +71,7 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
 
 
 
-### NOTE:
+#### NOTE:
 I was having issues importing the libraries correctly and didn't want to spend the time to fix it. So I just copied the `adafruit_ticks` and `adafruit_debounce` files into the root folder. This work fine, but is messy. 
 
 [Binary to ASCII table](https://www.ibm.com/docs/en/aix/7.2?topic=adapters-ascii-decimal-hexadecimal-octal-binary-conversion-table)
