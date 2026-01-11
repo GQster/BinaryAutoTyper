@@ -13,10 +13,11 @@ USBHIDParser hid2(usb);
 USBHIDParser hid3(usb);
 
 // -------------------------
-// Solenoid pins
+// Pins
 // -------------------------
 constexpr int SOL0_PIN = 2;
 constexpr int SOL1_PIN = 3;
+constexpr int DRV8833_ENABLE_PIN = 5;
 
 // -------------------------
 // Timing (microseconds)
@@ -75,7 +76,7 @@ volatile uint32_t tickCount = 0;
 
 uint8_t currentByte = 0;
 volatile int bitIndex = -1;
-volatile int activePin = -1;
+volatile int activePin = SOL0_PIN;
 
 // -------------------------
 // Timer
@@ -83,29 +84,47 @@ volatile int activePin = -1;
 IntervalTimer solTimer;
 
 // -------------------------
-// ASCII mapping
+// HID -> ASCII
 // -------------------------
-char keycodeToASCII(int key) {
-  if (key >= 0x20 && key <= 0x7E) return (char)key;
-  if (key == '\n') return '\n';
-  return 0;
+char hidToAscii(uint8_t key, uint8_t modifiers) {
+  bool shift = modifiers & (KEY_MOD_LSHIFT | KEY_MOD_RSHIFT);
+
+  // A–Z
+  if (key >= 4 && key <= 29) {
+    char c = 'a' + (key - 4);
+    return shift ? (c - 32) : c;  // uppercase if shift
+  }
+
+  // 1–9
+  if (key >= 30 && key <= 38) {
+    if (!shift) return '1' + (key - 30);
+    const char shifted[] = "!@#$%^&*(";
+    return shifted[key - 30];
+  }
+
+  // 0
+  if (key == 39) return shift ? ')' : '0';
+
+  // Space and Enter
+  if (key == 44) return ' ';
+  if (key == 40) return '\n';
+
+  return 0; // unsupported key
 }
 
 // -------------------------
 // Keyboard callbacks
 // -------------------------
 void onKeyPress(int key) {
-  // Printable ASCII
-  char c = keycodeToASCII(key);
+  char c = hidToAscii(key, keyboard.getModifiers());
   if (c) {
     Serial.print("Queued ASCII: ");
     Serial.println(c);
+    bufPush((uint8_t)c);  // send ASCII byte to solenoids
   } else {
-    Serial.print("Queued keycode: 0x");
+    Serial.print("Unsupported keycode: 0x");
     Serial.println(key, HEX);
   }
-
-  bufPush((uint8_t)key);  // send raw keycode to solenoids
 }
 
 
@@ -121,10 +140,13 @@ void solenoidISR() {
 
     case IDLE:
       if (!bufEmpty()) {
+        digitalWriteFast(DRV8833_ENABLE_PIN, HIGH);
         bufPop(currentByte);
         bitIndex = 7;
         tickCount = 0;
         pulseState = PULSE_ON;
+      } else {
+        digitalWriteFast(DRV8833_ENABLE_PIN, LOW); // sleep when idle
       }
       break;
 
@@ -161,6 +183,11 @@ void setup() {
   pinMode(SOL1_PIN, OUTPUT);
   digitalWrite(SOL0_PIN, LOW);
   digitalWrite(SOL1_PIN, LOW);
+
+  // Enable the DRV8833 board
+  pinMode(DRV8833_ENABLE_PIN, OUTPUT);
+  digitalWrite(DRV8833_ENABLE_PIN, HIGH);
+
 
   Serial.begin(115200);
   while (!Serial && millis() < 2000) {}
