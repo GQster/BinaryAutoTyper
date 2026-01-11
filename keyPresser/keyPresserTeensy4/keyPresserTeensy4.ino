@@ -177,22 +177,22 @@ void onKeyPress(int key) {
       return;
     }
 
-    // Map selected non-ASCII HID usages (and ASCII DEL) to protocol bytes first
+    // If printable ASCII, send the ASCII code ON PRESS only (handles Shift+number -> symbols)
+    if (raw >= 0x20 && raw <= 0x7E) {
+      uint8_t ascii_val = raw & 0x7F;
+      Serial.print("onKeyPress ASCII raw=0x"); Serial.print(raw, HEX);
+      Serial.print(" -> ascii=0x"); Serial.println(ascii_val, HEX);
+      bufPush(ascii_val);
+      return;
+    }
+
+    // Handle control ASCII and alternate/raw HID usages via mapping
     bool found;
     uint8_t proto = mapRawToProto(raw, found);
     if (found) {
       Serial.print("onKeyPress MAP raw=0x"); Serial.print(raw, HEX);
       Serial.print(" -> proto=0x"); Serial.println(proto, HEX);
       bufPush(proto);
-      return;
-    }
-
-    // If printable ASCII, send the ASCII code (0-126) ON PRESS only
-    if (raw >= 0x20 && raw <= 0x7E) {
-      uint8_t ascii_val = raw & 0x7F;
-      Serial.print("onKeyPress ASCII raw=0x"); Serial.print(raw, HEX);
-      Serial.print(" -> ascii=0x"); Serial.println(ascii_val, HEX);
-      bufPush(ascii_val);
       return;
     }
 
