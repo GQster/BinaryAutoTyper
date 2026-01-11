@@ -8,9 +8,9 @@ from adafruit_hid.keycode import Keycode
 # CircuitPython may not include collections.defaultdict; use a plain dict instead
 
 
-import supervisor
-supervisor.runtime.autoreload = False
-# disables autoreload to prevent issues with USB HID
+# import supervisor
+# supervisor.runtime.autoreload = False
+# # disables autoreload to prevent issues with USB HID
 
 
 # -------------------------
@@ -79,6 +79,18 @@ PROTO_TO_KEYCODE = {
     0x1B: Keycode.END,
     0x1C: Keycode.PAGE_UP,
     0x1D: Keycode.PAGE_DOWN,
+    0x02: Keycode.F1,
+    0x03: Keycode.F2,
+    0x04: Keycode.F3,
+    0x05: Keycode.F4,
+    0x06: Keycode.F5,
+    0x07: Keycode.F6,
+    0x08: Keycode.F7,
+    0x09: Keycode.F8,
+    0x0A: Keycode.F9,
+    0x0B: Keycode.F10,
+    0x0C: Keycode.F11,
+    0x0D: Keycode.F12,
 }
 
 # -------------------------
@@ -110,48 +122,66 @@ while True:
                 value = int(binary_input, 2)
 
                 # Protocol: values 0-127 => ASCII char or special; 128-135 => modifier toggle
+                # DEBUG: show received byte
+                try:
+                    print("recv byte=0x{:02X}".format(value))
+                except Exception:
+                    pass
                 if value < 128:
-                    # Handle special non-ASCII keys first
-                    if value in PROTO_TO_KEYCODE:
-                        kpd.press(PROTO_TO_KEYCODE[value])
-                        kpd.release(PROTO_TO_KEYCODE[value])
-                        binary_input = ""
-                        continue
-                    try:
-                        ch = chr(value)
-                        # Handle simple ASCII letters/digits/space by mapping to HID usages
-                        # For letters, press shift for uppercase
-                        if 'a' <= ch <= 'z':
-                            keycode = Keycode.A + (ord(ch) - ord('a'))
-                            kpd.press(keycode)
-                            kpd.release(keycode)
-                        elif 'A' <= ch <= 'Z':
-                            keycode = Keycode.A + (ord(ch) - ord('A'))
-                            kpd.press(Keycode.LEFT_SHIFT)
-                            kpd.press(keycode)
-                            kpd.release(keycode)
-                            kpd.release(Keycode.LEFT_SHIFT)
-                        elif '0' <= ch <= '9':
-                            # '1'..'9' -> usages 0x1E..0x26 ; '0' -> 0x27
-                            if ch == '0':
-                                keycode = 0x27
+                    # If printable ASCII, handle it first (prevents digits being misinterpreted)
+                    if 0x20 <= value <= 0x7E:
+                        try:
+                            ch = chr(value)
+                            # Handle simple ASCII letters/digits/space by mapping to HID usages
+                            # For letters, press shift for uppercase
+                            if 'a' <= ch <= 'z':
+                                keycode = Keycode.A + (ord(ch) - ord('a'))
+                                kpd.press(keycode)
+                                kpd.release(keycode)
+                            elif 'A' <= ch <= 'Z':
+                                keycode = Keycode.A + (ord(ch) - ord('A'))
+                                kpd.press(Keycode.LEFT_SHIFT)
+                                kpd.press(keycode)
+                                kpd.release(keycode)
+                                kpd.release(Keycode.LEFT_SHIFT)
+                            elif '0' <= ch <= '9':
+                                # '1'..'9' -> usages 0x1E..0x26 ; '0' -> 0x27
+                                if ch == '0':
+                                    keycode = 0x27
+                                else:
+                                    keycode = 0x1E + (ord(ch) - ord('1'))
+                                kpd.press(keycode)
+                                kpd.release(keycode)
+                            elif ch == ' ':
+                                kpd.press(Keycode.SPACE)
+                                kpd.release(Keycode.SPACE)
                             else:
-                                keycode = 0x1E + (ord(ch) - ord('1'))
-                            kpd.press(keycode)
-                            kpd.release(keycode)
-                        elif ch == ' ':
-                            kpd.press(Keycode.SPACE)
-                            kpd.release(Keycode.SPACE)
-                        else:
-                            # Fallback: try sending character via KeyboardLayout if available
+                                # Fallback: try sending character via KeyboardLayout if available
+                                try:
+                                    from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
+                                    layout = KeyboardLayoutUS(kpd)
+                                    layout.write(ch)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                    else:
+                        # Handle special non-ASCII protocol values
+                        if value in PROTO_TO_KEYCODE:
                             try:
-                                from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
-                                layout = KeyboardLayoutUS(kpd)
-                                layout.write(ch)
+                                print("matched proto -> 0x{:02X}".format(value))
                             except Exception:
                                 pass
-                    except Exception:
-                        pass
+                            mapped = PROTO_TO_KEYCODE[value]
+                            # If mapping is an integer HID usage, send via low-level press/release
+                            if isinstance(mapped, int):
+                                kpd.press(mapped)
+                                kpd.release(mapped)
+                            else:
+                                kpd.press(mapped)
+                                kpd.release(mapped)
+                            binary_input = ""
+                            continue
                 else:
                     # Modifier toggle
                     if value in MOD_MAP:

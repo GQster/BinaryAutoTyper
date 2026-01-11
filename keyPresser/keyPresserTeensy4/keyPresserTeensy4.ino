@@ -62,6 +62,19 @@ constexpr uint8_t PROTO_HOME        = 0x1A;
 constexpr uint8_t PROTO_END         = 0x1B;
 constexpr uint8_t PROTO_PAGE_UP     = 0x1C;
 constexpr uint8_t PROTO_PAGE_DOWN   = 0x1D;
+// Use non-printable protocol values for F1..F12 so they aren't misread as digits
+constexpr uint8_t PROTO_F1 = 0x02;
+constexpr uint8_t PROTO_F2 = 0x03;
+constexpr uint8_t PROTO_F3 = 0x04;
+constexpr uint8_t PROTO_F4 = 0x05;
+constexpr uint8_t PROTO_F5 = 0x06;
+constexpr uint8_t PROTO_F6 = 0x07;
+constexpr uint8_t PROTO_F7 = 0x08;
+constexpr uint8_t PROTO_F8 = 0x09;
+constexpr uint8_t PROTO_F9 = 0x0A;
+constexpr uint8_t PROTO_F10 = 0x0B;
+constexpr uint8_t PROTO_F11 = 0x0C;
+constexpr uint8_t PROTO_F12 = 0x0D;
 
 // Helper: map raw HID usage to protocol byte. returns 0 and found=false if no mapping.
 uint8_t mapRawToProto(uint8_t raw, bool &found) {
@@ -100,6 +113,32 @@ uint8_t mapRawToProto(uint8_t raw, bool &found) {
     case 0x4B: return PROTO_PAGE_DOWN;   // Page Down
     case 0x4D: return PROTO_HOME;        // Home
     case 0x4E: return PROTO_END;         // End
+    // Standard HID F1..F12 usages (0x3A..0x45)
+    case 0x3A: return PROTO_F1;
+    case 0x3B: return PROTO_F2;
+    case 0x3C: return PROTO_F3;
+    case 0x3D: return PROTO_F4;
+    case 0x3E: return PROTO_F5;
+    case 0x3F: return PROTO_F6;
+    case 0x40: return PROTO_F7;
+    case 0x41: return PROTO_F8;
+    case 0x42: return PROTO_F9;
+    case 0x43: return PROTO_F10;
+    case 0x44: return PROTO_F11;
+    case 0x45: return PROTO_F12;
+    // Alternate/raw codes observed for F1..F12
+    case 0xC2: return PROTO_F1;
+    case 0xC3: return PROTO_F2;
+    case 0xC4: return PROTO_F3;
+    case 0xC5: return PROTO_F4;
+    case 0xC6: return PROTO_F5;
+    case 0xC7: return PROTO_F6;
+    case 0xC8: return PROTO_F7;
+    case 0xC9: return PROTO_F8;
+    case 0xCA: return PROTO_F9;
+    case 0xCB: return PROTO_F10;
+    case 0xCC: return PROTO_F11;
+    case 0xCD: return PROTO_F12;
     default:
       found = false;
       return 0;
