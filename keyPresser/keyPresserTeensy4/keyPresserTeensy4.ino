@@ -90,10 +90,12 @@ uint8_t mapRawToProto(uint8_t raw, bool &found) {
       case 0x0A: return PROTO_ENTER;       // Line Feed
       case 0x0D: return PROTO_ENTER;       // Carriage Return
     case 0x2B: return PROTO_TAB;         // Tab
+      case 0x09: return PROTO_TAB;         // ASCII Tab (observed)
     case 0x29: return PROTO_ESCAPE;      // Escape (HID)
     case 0x1B: return PROTO_ESCAPE;      // ASCII ESC -> Escape
     case 0x4C: return PROTO_DELETE;      // Delete
     case 0x49: return PROTO_INSERT;      // Insert
+    case 0xD1: return PROTO_INSERT;      // Alternate/raw Insert observed
     case 0x4A: return PROTO_PAGE_UP;     // Page Up
     case 0x4B: return PROTO_PAGE_DOWN;   // Page Down
     case 0x4D: return PROTO_HOME;        // Home
