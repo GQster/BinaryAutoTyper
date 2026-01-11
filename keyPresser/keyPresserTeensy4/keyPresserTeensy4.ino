@@ -46,6 +46,65 @@ constexpr uint8_t KEY_MOD_RALT   = 0x40;
 constexpr uint8_t KEY_MOD_RGUI   = 0x80;
 
 // -------------------------
+// Protocol values (custom)
+// -------------------------
+constexpr uint8_t PROTO_RIGHT_ARROW = 0x10;
+constexpr uint8_t PROTO_LEFT_ARROW  = 0x11;
+constexpr uint8_t PROTO_DOWN_ARROW  = 0x12;
+constexpr uint8_t PROTO_UP_ARROW    = 0x13;
+constexpr uint8_t PROTO_BACKSPACE   = 0x14;
+constexpr uint8_t PROTO_ENTER       = 0x15;
+constexpr uint8_t PROTO_TAB         = 0x16;
+constexpr uint8_t PROTO_ESCAPE      = 0x17;
+constexpr uint8_t PROTO_DELETE      = 0x18;
+constexpr uint8_t PROTO_INSERT      = 0x19;
+constexpr uint8_t PROTO_HOME        = 0x1A;
+constexpr uint8_t PROTO_END         = 0x1B;
+constexpr uint8_t PROTO_PAGE_UP     = 0x1C;
+constexpr uint8_t PROTO_PAGE_DOWN   = 0x1D;
+
+// Helper: map raw HID usage to protocol byte. returns 0 and found=false if no mapping.
+uint8_t mapRawToProto(uint8_t raw, bool &found) {
+  found = true;
+  switch (raw) {
+    // Some host controllers report extended/raw values for arrows — accept both sets
+    case 0x4F: return PROTO_RIGHT_ARROW; // RIGHT
+    case 0x50: return PROTO_LEFT_ARROW;  // LEFT
+    case 0x51: return PROTO_DOWN_ARROW;  // DOWN
+    case 0x52: return PROTO_UP_ARROW;    // UP
+    // Alternate/raw codes observed on some keyboards/host stacks
+    case 0xD7: return PROTO_RIGHT_ARROW;
+    case 0xD8: return PROTO_LEFT_ARROW;
+    case 0xD9: return PROTO_DOWN_ARROW;
+    case 0xDA: return PROTO_UP_ARROW;
+    // More alternate/raw codes observed for navigation keys
+    case 0xD2: return PROTO_HOME;
+    case 0xD3: return PROTO_PAGE_UP;
+    case 0xD4: return PROTO_DELETE;
+    case 0xD5: return PROTO_END;
+    case 0xD6: return PROTO_PAGE_DOWN;
+    case 0x2A: return PROTO_BACKSPACE;   // Backspace (HID 0x2A)
+    case 0x7F: return PROTO_BACKSPACE;   // ASCII DEL -> Backspace
+    case 0x28: return PROTO_ENTER;       // Enter (Return)
+      // Alternate/ASCII codes sometimes seen for Enter: LF (0x0A) and CR (0x0D)
+      case 0x0A: return PROTO_ENTER;       // Line Feed
+      case 0x0D: return PROTO_ENTER;       // Carriage Return
+    case 0x2B: return PROTO_TAB;         // Tab
+    case 0x29: return PROTO_ESCAPE;      // Escape (HID)
+    case 0x1B: return PROTO_ESCAPE;      // ASCII ESC -> Escape
+    case 0x4C: return PROTO_DELETE;      // Delete
+    case 0x49: return PROTO_INSERT;      // Insert
+    case 0x4A: return PROTO_PAGE_UP;     // Page Up
+    case 0x4B: return PROTO_PAGE_DOWN;   // Page Down
+    case 0x4D: return PROTO_HOME;        // Home
+    case 0x4E: return PROTO_END;         // End
+    default:
+      found = false;
+      return 0;
+  }
+}
+
+// -------------------------
 // Ring buffer
 // -------------------------
 constexpr int BUF_SIZE = 1024;
@@ -118,8 +177,18 @@ void onKeyPress(int key) {
       return;
     }
 
-    // If printable ASCII, send the ASCII code (0-127) ON PRESS only
-    if (raw >= 0x20 && raw <= 0x7F) {
+    // Map selected non-ASCII HID usages (and ASCII DEL) to protocol bytes first
+    bool found;
+    uint8_t proto = mapRawToProto(raw, found);
+    if (found) {
+      Serial.print("onKeyPress MAP raw=0x"); Serial.print(raw, HEX);
+      Serial.print(" -> proto=0x"); Serial.println(proto, HEX);
+      bufPush(proto);
+      return;
+    }
+
+    // If printable ASCII, send the ASCII code (0-126) ON PRESS only
+    if (raw >= 0x20 && raw <= 0x7E) {
       uint8_t ascii_val = raw & 0x7F;
       Serial.print("onKeyPress ASCII raw=0x"); Serial.print(raw, HEX);
       Serial.print(" -> ascii=0x"); Serial.println(ascii_val, HEX);
@@ -127,9 +196,8 @@ void onKeyPress(int key) {
       return;
     }
 
-    // Fallback: if we get a HID usage for a non-printable, try passing it through as ascii-sized value
-    Serial.print("onKeyPress OTHER raw=0x"); Serial.println(raw, HEX);
-    bufPush(raw & 0x7F);
+    // Unknown non-printable: ignore to avoid sending raw HID values that confuse receiver
+    Serial.print("onKeyPress IGNORE raw=0x"); Serial.println(raw, HEX);
 }
 
 void onKeyRelease(int key) {
@@ -152,9 +220,18 @@ void onKeyRelease(int key) {
       return;
     }
 
-    // Fallback: push raw
-    Serial.print("onKeyRelease OTHER raw=0x"); Serial.println(raw, HEX);
-    bufPush(raw & 0x7F);
+    // Map selected non-ASCII HID usages to protocol bytes on release as well
+    // For non-modifier mapped keys (arrows, backspace, etc.) we handled on press,
+    // so ignore their releases to avoid double-sending.
+    bool found;
+    uint8_t proto = mapRawToProto(raw, found);
+    if (found) {
+      Serial.print("onKeyRelease MAP ignored raw=0x"); Serial.print(raw, HEX);
+      Serial.print(" -> proto=0x"); Serial.println(proto, HEX);
+      return;
+    }
+
+    Serial.print("onKeyRelease IGNORE raw=0x"); Serial.println(raw, HEX);
 }
 
 

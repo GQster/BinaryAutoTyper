@@ -56,6 +56,31 @@ MOD_MAP = {
     135: Keycode.RIGHT_GUI,
 }
 
+# Special protocol values (0x10..0x13) mapped to non-ASCII keys
+SPECIAL_MAP = {
+    0x10: Keycode.RIGHT_ARROW,
+    0x11: Keycode.LEFT_ARROW,
+    0x12: Keycode.DOWN_ARROW,
+    0x13: Keycode.UP_ARROW,
+}
+# Extended special map covering more control/navigation keys
+PROTO_TO_KEYCODE = {
+    0x10: Keycode.RIGHT_ARROW,
+    0x11: Keycode.LEFT_ARROW,
+    0x12: Keycode.DOWN_ARROW,
+    0x13: Keycode.UP_ARROW,
+    0x14: Keycode.BACKSPACE,
+    0x15: Keycode.ENTER,
+    0x16: Keycode.TAB,
+    0x17: Keycode.ESCAPE,
+    0x18: Keycode.DELETE,
+    0x19: Keycode.INSERT,
+    0x1A: Keycode.HOME,
+    0x1B: Keycode.END,
+    0x1C: Keycode.PAGE_UP,
+    0x1D: Keycode.PAGE_DOWN,
+}
+
 # -------------------------
 # Main loop
 # -------------------------
@@ -84,8 +109,14 @@ while True:
                 # Convert 8-bit string to integer
                 value = int(binary_input, 2)
 
-                # Protocol: values 0-127 => ASCII char; 128-135 => modifier toggle
+                # Protocol: values 0-127 => ASCII char or special; 128-135 => modifier toggle
                 if value < 128:
+                    # Handle special non-ASCII keys first
+                    if value in PROTO_TO_KEYCODE:
+                        kpd.press(PROTO_TO_KEYCODE[value])
+                        kpd.release(PROTO_TO_KEYCODE[value])
+                        binary_input = ""
+                        continue
                     try:
                         ch = chr(value)
                         # Handle simple ASCII letters/digits/space by mapping to HID usages
