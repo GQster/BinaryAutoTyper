@@ -32,6 +32,8 @@ Currently working on the [CAD](https://cad.onshape.com/documents/a23f21f7142f74b
   - 2 Electric KK-0520B solenoid (5V,  600ma, 5mm travel, 0.2-5N)
   - wire (I used 22 awg)
  
+  **NOTE** I replaced the circuitry here for a DRV8833 motor controller, 1 100uF cap, and 3 0.1uF caps. Also switched the keyboard Presser to a teensy 4.0
+
  Other:
   - 3D printed housing
   - 4 small bolts
@@ -83,3 +85,25 @@ If you want to read more on the circuitry involved in this project [this is a go
 - Install circuitpython to the RP2040 [I used this one](https://github.com/GQster/BinaryAutoTyper/blob/main/circuitPython10x/adafruit-circuitpython-waveshare_rp2040_zero-en_US-10.0.3.uf2)
 - In the adafruit-circuitpython*****.zip [I got from here](https://circuitpython.org/libraries), copy the `lib/adafruit_hid` folder to the rp2040's `lib/` folder.
 - Copy the `code.py` [file](https://github.com/GQster/BinaryAutoTyper/blob/main/keyPresser/code.py) to the root of the rp2040
+
+
+
+# DRV8833 Wiring
+    Channel A:
+    IN1 → GPIO 3   (control)
+    IN2 → GND      (fixed LOW)
+
+    Channel B:
+    IN3 → GND      (fixed LOW)
+
+    IN4 → GPIO 2   (control)
+
+    Enable:
+    EEP → GPIO 5
+
+    Power:
+    100uF & 0.1uF: VCC >> GND
+    
+    Solenoid Filtering:
+    0.1uF: OUT1 >> OUT2
+    0.1uF: OUT3 >> OUT4
