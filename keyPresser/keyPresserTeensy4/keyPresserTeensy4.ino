@@ -101,30 +101,62 @@ IntervalTimer solTimer;
 // -------------------------
 // Keyboard callbacks
 // -------------------------
+volatile uint32_t lastKeyTime = 0;
+constexpr uint32_t DEBOUNCE_MS = 10; // ignore presses <10ms apart
+
 void onKeyPress(int key) {
-  uint8_t mods = keyboard.getModifiers();
+    if (millis() - lastKeyTime < DEBOUNCE_MS) return;
+    lastKeyTime = millis();
+    uint8_t raw = (uint8_t)key;
 
-  // Push modifiers first (stateful)
-  for (int i = 0; i < 8; i++) {
-    if (mods & (1 << i)) {
-      bufPush(0xE0 + i);
+    // If the host callback gives a HID modifier usage (0xE0..0xE7), map to 128..135
+    if (raw >= 0xE0 && raw <= 0xE7) {
+      uint8_t mod_val = 128 + (raw - 0xE0); // 0xE0->128 ... 0xE7->135
+      Serial.print("onKeyPress MOD raw=0x"); Serial.print(raw, HEX);
+      Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
+      bufPush(mod_val);
+      return;
     }
-  }
 
-  // Push key itself
-  bufPush((uint8_t)key);
+    // If printable ASCII, send the ASCII code (0-127) ON PRESS only
+    if (raw >= 0x20 && raw <= 0x7F) {
+      uint8_t ascii_val = raw & 0x7F;
+      Serial.print("onKeyPress ASCII raw=0x"); Serial.print(raw, HEX);
+      Serial.print(" -> ascii=0x"); Serial.println(ascii_val, HEX);
+      bufPush(ascii_val);
+      return;
+    }
+
+    // Fallback: if we get a HID usage for a non-printable, try passing it through as ascii-sized value
+    Serial.print("onKeyPress OTHER raw=0x"); Serial.println(raw, HEX);
+    bufPush(raw & 0x7F);
 }
 
 void onKeyRelease(int key) {
-  uint8_t mods = keyboard.getModifiers();
+    if (millis() - lastKeyTime < DEBOUNCE_MS) return;
+    lastKeyTime = millis();
+    uint8_t raw = (uint8_t)key;
 
-  // Release all modifiers when they go away
-  for (int i = 0; i < 8; i++) {
-    if (!(mods & (1 << i))) {
-      bufPush(0xE0 + i); // RP2040 will re-press or ignore safely
+    // If modifier release, send same modifier value so receiver toggles state
+    if (raw >= 0xE0 && raw <= 0xE7) {
+      uint8_t mod_val = 128 + (raw - 0xE0);
+      Serial.print("onKeyRelease MOD raw=0x"); Serial.print(raw, HEX);
+      Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
+      bufPush(mod_val);
+      return;
     }
-  }
+
+    // Non-modifier releases are ignored for the ASCII protocol
+    if (raw >= 0x20 && raw <= 0x7F) {
+      Serial.print("onKeyRelease ASCII ignored raw=0x"); Serial.println(raw, HEX);
+      return;
+    }
+
+    // Fallback: push raw
+    Serial.print("onKeyRelease OTHER raw=0x"); Serial.println(raw, HEX);
+    bufPush(raw & 0x7F);
 }
+
 
 
 // -------------------------
