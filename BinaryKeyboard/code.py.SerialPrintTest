@@ -1,0 +1,14 @@
+import time
+import digitalio
+import board
+import usb_cdc
+
+
+print("BOOT OK")
+print("testing the seral print")
+count = 0
+while True:
+    count += 1
+    print(f"count: {count}")
+    time.sleep(1)
+
