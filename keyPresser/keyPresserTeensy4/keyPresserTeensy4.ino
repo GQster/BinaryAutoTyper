@@ -1,5 +1,4 @@
 #include <USBHost_t36.h>
-
 // -------------------------
 // USB Host objects
 // -------------------------
@@ -226,14 +225,28 @@ void onKeyPress(int key) {
       bufPush(ascii_val);
       return;
     }
-
-    // Handle control ASCII and alternate/raw HID usages via mapping
+    // Handle control ASCII and alternate/raw HID usages via mapping first
     bool found;
     uint8_t proto = mapRawToProto(raw, found);
     if (found) {
       Serial.print("onKeyPress MAP raw=0x"); Serial.print(raw, HEX);
       Serial.print(" -> proto=0x"); Serial.println(proto, HEX);
       bufPush(proto);
+      return;
+    }
+
+    // Some hosts deliver Ctrl+letter as ASCII control codes (0x01..0x1A).
+    // Translate these into: send modifier press (LEFT_CONTROL proto=128),
+    // then send the corresponding lowercase ASCII letter.
+    if (raw >= 0x01 && raw <= 0x1A) {
+      uint8_t letter_index = raw - 1; // 0 -> 'a'
+      uint8_t ascii_val = (uint8_t)('a' + letter_index);
+      uint8_t ctrl_proto = 128; // left control
+      Serial.print("onKeyPress CTL raw=0x"); Serial.print(raw, HEX);
+      Serial.print(" -> ctrl+ascii=0x"); Serial.println(ascii_val, HEX);
+      // send ctrl down, then the ascii byte
+      bufPush(ctrl_proto);
+      bufPush(ascii_val);
       return;
     }
 
@@ -252,6 +265,26 @@ void onKeyRelease(int key) {
       Serial.print("onKeyRelease MOD raw=0x"); Serial.print(raw, HEX);
       Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
       bufPush(mod_val);
+      return;
+    }
+
+    // Map selected non-ASCII HID usages to protocol bytes on release as well
+    // For non-modifier mapped keys (arrows, backspace, etc.) we handled on press,
+    // so ignore their releases to avoid double-sending.
+    bool foundRel;
+    uint8_t protoRel = mapRawToProto(raw, foundRel);
+    if (foundRel) {
+      Serial.print("onKeyRelease MAP ignored raw=0x"); Serial.print(raw, HEX);
+      Serial.print(" -> proto=0x"); Serial.println(protoRel, HEX);
+      return;
+    }
+
+    // Handle ASCII control codes (Ctrl+letter) on release by forwarding the
+    // corresponding ctrl modifier release so receiver will toggle it off.
+    if (raw >= 0x01 && raw <= 0x1A) {
+      uint8_t ctrl_proto = 128; // left control
+      Serial.print("onKeyRelease CTL raw=0x"); Serial.println(raw, HEX);
+      bufPush(ctrl_proto);
       return;
     }
 
@@ -346,4 +379,38 @@ void setup() {
 // -------------------------
 // Loop
 // -------------------------
-void loop() { usb.Task(); }
+void loop() { usb.Task(); pollModifiers(); }
+
+// Poll for modifier state changes (some keyboards send modifiers in the report
+// modifier byte instead of as separate key press events). This captures those
+// changes and forwards them as the protocol modifier values (128..135).
+volatile uint8_t _last_mods = 0;
+
+void pollModifiers() {
+  // KeyboardController provides getModifiers() returning a modifier bitmask
+  uint8_t mods = 0;
+  // guard in case the method isn't available on some library versions
+  #if defined(__arm__) || defined(ARDUINO)
+  mods = keyboard.getModifiers();
+  #endif
+
+  if (mods == _last_mods) return;
+  uint8_t changed = mods ^ _last_mods;
+  for (uint8_t i = 0; i < 8; ++i) {
+    uint8_t mask = (1 << i);
+    if (changed & mask) {
+      uint8_t mod_val = 128 + i; // map bit to 128..135
+      if (mods & mask) {
+        Serial.print("MOD POLL PRESS bit="); Serial.print(i);
+        Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
+        bufPush(mod_val);
+      } else {
+        Serial.print("MOD POLL RELEASE bit="); Serial.print(i);
+        Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
+        bufPush(mod_val);
+      }
+    }
+  }
+  _last_mods = mods;
+}
+

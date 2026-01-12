@@ -166,7 +166,8 @@ while True:
                         except Exception:
                             pass
                     else:
-                        # Handle special non-ASCII protocol values
+                        # Handle special non-ASCII protocol values and combos
+                        # No explicit combos here; rely on forwarded modifier bytes
                         if value in PROTO_TO_KEYCODE:
                             try:
                                 print("matched proto -> 0x{:02X}".format(value))
