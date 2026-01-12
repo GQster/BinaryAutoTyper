@@ -8,9 +8,9 @@ from adafruit_hid.keycode import Keycode
 # CircuitPython may not include collections.defaultdict; use a plain dict instead
 
 
-# import supervisor
-# supervisor.runtime.autoreload = False
-# # disables autoreload to prevent issues with USB HID
+import supervisor
+supervisor.runtime.autoreload = False
+# disables autoreload to prevent issues with USB HID
 
 
 # -------------------------
