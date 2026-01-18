@@ -5,8 +5,6 @@ from digitalio import DigitalInOut, Pull
 from adafruit_debouncer import Debouncer
 from adafruit_hid.keyboard import Keyboard
 from adafruit_hid.keycode import Keycode
-# CircuitPython may not include collections.defaultdict; use a plain dict instead
-
 
 import supervisor
 supervisor.runtime.autoreload = False
@@ -21,15 +19,16 @@ kpd = Keyboard(usb_hid.devices)
 # -------------------------
 # Timing / pins
 # -------------------------
-CLEAR_TIMEOUT = 2  # seconds
+CLEAR_TIMEOUT = 2.0  # seconds
+# Start symbol is now: key0 then key1, about 40ms apart
+# We detect it as: key0 followed by key1 within 50ms
+START_SYMBOL_TIMEOUT = 0.050  # 50ms window for start symbol sequence
+BIT_TIMEOUT = 0.050  # 50ms - max time between bits (pulse+gap = 40ms)
 NUM_KEYS = 2
 PINS = (board.GP2, board.GP3)
 
 # Each key maps to a binary digit
-KEYMAP = (
-    ("0",),  # binary 0
-    ("1",),  # binary 1
-)
+KEYMAP = ("0", "1")
 
 # -------------------------
 # Initialize keys
@@ -40,11 +39,31 @@ for pin in PINS:
     dio.pull = Pull.UP
     keys.append(Debouncer(dio))
 
-binary_input = ""
 last_key_time = time.monotonic()
-modifier_state = {}
 
-# Mapping for modifier protocol values (128-135) to Keycode constants
+# -------------------------
+# State machine
+# -------------------------
+STATE_WAIT_START_0 = 0  # Waiting for key0 (first part of start symbol)
+STATE_WAIT_START_1 = 1  # Got key0, waiting for key1 to complete start symbol
+STATE_RECEIVING = 2     # Receiving data bits
+
+state = STATE_WAIT_START_0
+state_enter_time = 0.0
+bit_buffer = ""
+
+# -------------------------
+# Mappings
+# -------------------------
+PROTO_CTRL_A = 0x40
+# Build combo map for Ctrl+a..z
+COMBO_MAP = {}
+for i in range(26):
+    COMBO_MAP[PROTO_CTRL_A + i] = Keycode.A + i
+
+# -------------------------
+# Modifier mapping
+# -------------------------
 MOD_MAP = {
     128: Keycode.LEFT_CONTROL,
     129: Keycode.LEFT_SHIFT,
@@ -56,7 +75,9 @@ MOD_MAP = {
     135: Keycode.RIGHT_GUI,
 }
 
-# Special protocol values (0x10..0x13) mapped to non-ASCII keys
+# -------------------------
+# Special keys / navigation
+# -------------------------
 SPECIAL_MAP = {
     0x10: Keycode.RIGHT_ARROW,
     0x11: Keycode.LEFT_ARROW,
@@ -93,105 +114,129 @@ PROTO_TO_KEYCODE = {
     0x0D: Keycode.F12,
 }
 
+debug_press_count = 0
+
+def process_byte(value):
+    """Process a complete received byte"""
+    print("COMPLETE BYTE: 0x{:02X} ({})".format(value, value))
+    
+    if value in COMBO_MAP:
+        kc = COMBO_MAP[value]
+        print("CTRL+{} combo".format(chr(ord('a') + value - PROTO_CTRL_A)))
+        kpd.press(Keycode.LEFT_CONTROL)
+        kpd.press(kc)
+        kpd.release(kc)
+        kpd.release(Keycode.LEFT_CONTROL)
+        return
+
+    if value in MOD_MAP:
+        kc = MOD_MAP[value]
+        print("modifier -> {}".format(kc))
+        kpd.press(kc)
+        kpd.release(kc)
+        return
+
+    if value < 128:
+        if 0x20 <= value <= 0x7E:
+            ch = chr(value)
+            print("ASCII: '{}'".format(ch))
+            if 'a' <= ch <= 'z':
+                keycode = Keycode.A + (ord(ch) - ord('a'))
+                kpd.press(keycode)
+                kpd.release(keycode)
+            elif 'A' <= ch <= 'Z':
+                keycode = Keycode.A + (ord(ch) - ord('A'))
+                kpd.press(Keycode.LEFT_SHIFT)
+                kpd.press(keycode)
+                kpd.release(keycode)
+                kpd.release(Keycode.LEFT_SHIFT)
+            elif '0' <= ch <= '9':
+                if ch == '0':
+                    keycode = Keycode.ZERO
+                else:
+                    keycode = Keycode.ONE + (ord(ch) - ord('1'))
+                kpd.press(keycode)
+                kpd.release(keycode)
+            elif ch == ' ':
+                kpd.press(Keycode.SPACE)
+                kpd.release(Keycode.SPACE)
+            else:
+                try:
+                    from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
+                    layout = KeyboardLayoutUS(kpd)
+                    layout.write(ch)
+                except:
+                    pass
+        elif value in PROTO_TO_KEYCODE:
+            print("proto 0x{:02X}".format(value))
+            mapped = PROTO_TO_KEYCODE[value]
+            kpd.press(mapped)
+            kpd.release(mapped)
+        else:
+            print("UNKNOWN: 0x{:02X}".format(value))
+
 # -------------------------
 # Main loop
 # -------------------------
 while True:
     current_time = time.monotonic()
 
-    # Clear timeout
-    if current_time - last_key_time > CLEAR_TIMEOUT and binary_input:
-        binary_input = ""
+    # Handle timeouts based on state
+    if state == STATE_WAIT_START_1:
+        # Waiting for key1 to complete start symbol
+        if current_time - state_enter_time > START_SYMBOL_TIMEOUT:
+            print("START SYMBOL TIMEOUT - back to waiting")
+            state = STATE_WAIT_START_0
+    
+    elif state == STATE_RECEIVING:
+        # Receiving bits - timeout means desync
+        if current_time - last_key_time > CLEAR_TIMEOUT:
+            if bit_buffer:
+                print("RECEIVE TIMEOUT: clearing buffer='{}' len={}".format(bit_buffer, len(bit_buffer)))
+            bit_buffer = ""
+            state = STATE_WAIT_START_0
 
     # Scan physical keys
     for i in range(NUM_KEYS):
         keys[i].update()
-
-        # Only append when key FALLS (pressed)
+        
         if keys[i].fell:
+            debug_press_count += 1
             last_key_time = current_time
-            binary_input += KEYMAP[i][0]
-
-        # Optional: clear flag after release to prevent duplicates
-        if keys[i].rose:
-            pass  # can use this if you need to reset something
-
-        # Only send when we have 8 bits
-        if len(binary_input) == 8:
-                # Convert 8-bit string to integer
-                value = int(binary_input, 2)
-
-                # Protocol: values 0-127 => ASCII char or special; 128-135 => modifier toggle
-                # DEBUG: show received byte
-                try:
-                    print("recv byte=0x{:02X}".format(value))
-                except Exception:
-                    pass
-                if value < 128:
-                    # If printable ASCII, handle it first (prevents digits being misinterpreted)
-                    if 0x20 <= value <= 0x7E:
-                        try:
-                            ch = chr(value)
-                            # Handle simple ASCII letters/digits/space by mapping to HID usages
-                            # For letters, press shift for uppercase
-                            if 'a' <= ch <= 'z':
-                                keycode = Keycode.A + (ord(ch) - ord('a'))
-                                kpd.press(keycode)
-                                kpd.release(keycode)
-                            elif 'A' <= ch <= 'Z':
-                                keycode = Keycode.A + (ord(ch) - ord('A'))
-                                kpd.press(Keycode.LEFT_SHIFT)
-                                kpd.press(keycode)
-                                kpd.release(keycode)
-                                kpd.release(Keycode.LEFT_SHIFT)
-                            elif '0' <= ch <= '9':
-                                # '1'..'9' -> usages 0x1E..0x26 ; '0' -> 0x27
-                                if ch == '0':
-                                    keycode = 0x27
-                                else:
-                                    keycode = 0x1E + (ord(ch) - ord('1'))
-                                kpd.press(keycode)
-                                kpd.release(keycode)
-                            elif ch == ' ':
-                                kpd.press(Keycode.SPACE)
-                                kpd.release(Keycode.SPACE)
-                            else:
-                                # Fallback: try sending character via KeyboardLayout if available
-                                try:
-                                    from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
-                                    layout = KeyboardLayoutUS(kpd)
-                                    layout.write(ch)
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
-                    else:
-                        # Handle special non-ASCII protocol values and combos
-                        # No explicit combos here; rely on forwarded modifier bytes
-                        if value in PROTO_TO_KEYCODE:
-                            try:
-                                print("matched proto -> 0x{:02X}".format(value))
-                            except Exception:
-                                pass
-                            mapped = PROTO_TO_KEYCODE[value]
-                            # If mapping is an integer HID usage, send via low-level press/release
-                            if isinstance(mapped, int):
-                                kpd.press(mapped)
-                                kpd.release(mapped)
-                            else:
-                                kpd.press(mapped)
-                                kpd.release(mapped)
-                            binary_input = ""
-                            continue
+            
+            print("PRESS key={} state={} time={:.4f} (press#{})".format(
+                i, state, current_time, debug_press_count))
+            
+            if state == STATE_WAIT_START_0:
+                # Waiting for first part of start symbol (key0)
+                if i == 0:
+                    state = STATE_WAIT_START_1
+                    state_enter_time = current_time
+                    print("  -> Got key0, waiting for key1")
                 else:
-                    # Modifier toggle
-                    if value in MOD_MAP:
-                        kc = MOD_MAP[value]
-                        if not modifier_state.get(value, False):
-                            kpd.press(kc)
-                            modifier_state[value] = True
-                        else:
-                            kpd.release(kc)
-                            modifier_state[value] = False
-
-                binary_input = ""  # reset for next byte
+                    print("  -> Ignoring key1, need key0 first")
+            
+            elif state == STATE_WAIT_START_1:
+                # Waiting for second part of start symbol (key1)
+                if i == 1:
+                    # START SYMBOL COMPLETE!
+                    state = STATE_RECEIVING
+                    bit_buffer = ""
+                    print(">>> START SYMBOL COMPLETE - ready to receive <<<")
+                elif i == 0:
+                    # Another key0 - restart
+                    state_enter_time = current_time
+                    print("  -> Another key0, restarting wait for key1")
+            
+            elif state == STATE_RECEIVING:
+                # Receiving data bits
+                bit_buffer += KEYMAP[i]
+                print("  -> BIT: {} -> buffer='{}' len={}".format(
+                    KEYMAP[i], bit_buffer, len(bit_buffer)))
+                
+                # Check if we have a complete byte
+                if len(bit_buffer) == 8:
+                    value = int(bit_buffer, 2)
+                    bit_buffer = ""
+                    state = STATE_WAIT_START_0
+                    process_byte(value)

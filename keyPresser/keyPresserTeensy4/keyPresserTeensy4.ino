@@ -14,8 +14,8 @@ USBHIDParser hid3(usb);
 // -------------------------
 // Pins
 // -------------------------
-constexpr int SOL0_PIN = 2;
-constexpr int SOL1_PIN = 3;
+constexpr int SOL0_PIN = 3;
+constexpr int SOL1_PIN = 2;
 constexpr int DRV8833_ENABLE_PIN = 5;
 
 // -------------------------
@@ -23,7 +23,7 @@ constexpr int DRV8833_ENABLE_PIN = 5;
 // Tune these carefully
 // -------------------------
 constexpr uint32_t PULSE_US = 25000; // solenoid on 
-constexpr uint32_t GAP_US   = 10000; // off between bits
+constexpr uint32_t GAP_US   = 15000; // off between bits
 
 // ISR tick period
 constexpr uint32_t TICK_US = 25;
@@ -31,6 +31,9 @@ constexpr uint32_t TICK_US = 25;
 // Derived timing (ticks)
 constexpr uint32_t PULSE_TICKS = PULSE_US / TICK_US;
 constexpr uint32_t GAP_TICKS   = GAP_US   / TICK_US;
+
+// Frame structure
+constexpr int START_SYMBOL = 2; // Fire both solenoids for start symbol
 
 // -------------------------
 // Modifier key bit masks
@@ -74,6 +77,8 @@ constexpr uint8_t PROTO_F9 = 0x0A;
 constexpr uint8_t PROTO_F10 = 0x0B;
 constexpr uint8_t PROTO_F11 = 0x0C;
 constexpr uint8_t PROTO_F12 = 0x0D;
+// Combo protocol bytes for Ctrl+a..z (single atomic byte)
+const uint8_t PROTO_CTRL_A = 0x40;  // Ctrl+a through Ctrl+z at 0x40..0x59
 
 // Helper: map raw HID usage to protocol byte. returns 0 and found=false if no mapping.
 uint8_t mapRawToProto(uint8_t raw, bool &found) {
@@ -149,8 +154,8 @@ uint8_t mapRawToProto(uint8_t raw, bool &found) {
 // -------------------------
 constexpr int BUF_SIZE = 1024;
 volatile uint8_t buf[BUF_SIZE];
-volatile uint8_t head = 0;
-volatile uint8_t tail = 0;
+volatile uint16_t head = 0;
+volatile uint16_t tail = 0;
 
 inline bool bufEmpty() {
   return head == tail;
@@ -169,6 +174,15 @@ inline void bufPush(uint8_t v) {
   head = (head + 1) % BUF_SIZE;
 }
 
+// Enqueue a byte with start symbol prefix
+// Pushes: START_SYMBOL, bit7, bit6, bit5, bit4, bit3, bit2, bit1, bit0
+void enqueueByte(uint8_t v) {
+  bufPush(START_SYMBOL);
+  for (int i = 7; i >= 0; i--) {
+    bufPush((v >> i) & 1);
+  }
+}
+
 inline bool bufPop(uint8_t &v) {
   if (bufEmpty()) return false;
   v = buf[tail];
@@ -181,15 +195,16 @@ inline bool bufPop(uint8_t &v) {
 // -------------------------
 enum PulseState {
   IDLE,
-  PULSE_ON,
-  PULSE_OFF
+  START_PULSE_ON_FIRST,   // First solenoid of start symbol
+  START_PULSE_OFF_FIRST,  // Gap before second solenoid
+  START_PULSE_ON_SECOND,  // Second solenoid of start symbol
+  START_PULSE_OFF_SECOND, // Gap after start symbol
+  BIT_PULSE_ON,
+  BIT_PULSE_OFF
 };
 
 volatile PulseState pulseState = IDLE;
 volatile uint32_t tickCount = 0;
-
-uint8_t currentByte = 0;
-volatile int bitIndex = -1;
 volatile int activePin = SOL0_PIN;
 
 // -------------------------
@@ -213,7 +228,7 @@ void onKeyPress(int key) {
       uint8_t mod_val = 128 + (raw - 0xE0); // 0xE0->128 ... 0xE7->135
       Serial.print("onKeyPress MOD raw=0x"); Serial.print(raw, HEX);
       Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
-      bufPush(mod_val);
+      enqueueByte(mod_val);
       return;
     }
 
@@ -222,7 +237,7 @@ void onKeyPress(int key) {
       uint8_t ascii_val = raw & 0x7F;
       Serial.print("onKeyPress ASCII raw=0x"); Serial.print(raw, HEX);
       Serial.print(" -> ascii=0x"); Serial.println(ascii_val, HEX);
-      bufPush(ascii_val);
+      enqueueByte(ascii_val);
       return;
     }
     // Handle control ASCII and alternate/raw HID usages via mapping first
@@ -231,22 +246,18 @@ void onKeyPress(int key) {
     if (found) {
       Serial.print("onKeyPress MAP raw=0x"); Serial.print(raw, HEX);
       Serial.print(" -> proto=0x"); Serial.println(proto, HEX);
-      bufPush(proto);
+      enqueueByte(proto);
       return;
     }
 
     // Some hosts deliver Ctrl+letter as ASCII control codes (0x01..0x1A).
-    // Translate these into: send modifier press (LEFT_CONTROL proto=128),
-    // then send the corresponding lowercase ASCII letter.
+    // Emit a single combo proto byte for atomic Ctrl+<letter> handling on receiver.
     if (raw >= 0x01 && raw <= 0x1A) {
       uint8_t letter_index = raw - 1; // 0 -> 'a'
-      uint8_t ascii_val = (uint8_t)('a' + letter_index);
-      uint8_t ctrl_proto = 128; // left control
+      uint8_t combo_proto = PROTO_CTRL_A + letter_index;
       Serial.print("onKeyPress CTL raw=0x"); Serial.print(raw, HEX);
-      Serial.print(" -> ctrl+ascii=0x"); Serial.println(ascii_val, HEX);
-      // send ctrl down, then the ascii byte
-      bufPush(ctrl_proto);
-      bufPush(ascii_val);
+      Serial.print(" -> combo=0x"); Serial.println(combo_proto, HEX);
+      enqueueByte(combo_proto);
       return;
     }
 
@@ -264,7 +275,7 @@ void onKeyRelease(int key) {
       uint8_t mod_val = 128 + (raw - 0xE0);
       Serial.print("onKeyRelease MOD raw=0x"); Serial.print(raw, HEX);
       Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
-      bufPush(mod_val);
+      enqueueByte(mod_val);
       return;
     }
 
@@ -279,12 +290,9 @@ void onKeyRelease(int key) {
       return;
     }
 
-    // Handle ASCII control codes (Ctrl+letter) on release by forwarding the
-    // corresponding ctrl modifier release so receiver will toggle it off.
+    // Handle ASCII control codes (Ctrl+letter) on release by ignoring (atomic on press)
     if (raw >= 0x01 && raw <= 0x1A) {
-      uint8_t ctrl_proto = 128; // left control
-      Serial.print("onKeyRelease CTL raw=0x"); Serial.println(raw, HEX);
-      bufPush(ctrl_proto);
+      Serial.print("onKeyRelease CTL ignored raw=0x"); Serial.println(raw, HEX);
       return;
     }
 
@@ -312,40 +320,93 @@ void onKeyRelease(int key) {
 
 // -------------------------
 // Solenoid ISR (HARD REAL-TIME)
+// Each buffer entry is processed as a single solenoid action:
+// - START_SYMBOL (2): fire SOL0, then SOL1 (staggered for power)
+// - 0: fire SOL0 only
+// - 1: fire SOL1 only
 // -------------------------
 void solenoidISR() {
+  uint8_t symbol = 0;
+  
   switch (pulseState) {
     case IDLE:
       if (!bufEmpty()) {
         digitalWriteFast(DRV8833_ENABLE_PIN, HIGH);
-        bufPop(currentByte);
-        bitIndex = 7;
+        bufPop(symbol);
+        
+        if (symbol == START_SYMBOL) {
+          // Start symbol - fire first solenoid
         tickCount = 0;
-        pulseState = PULSE_ON;
+          pulseState = START_PULSE_ON_FIRST;
+        } else {
+          // It's a bit (0 or 1)
+          activePin = symbol ? SOL1_PIN : SOL0_PIN;
+          tickCount = 0;
+          pulseState = BIT_PULSE_ON;
+        }
       } else {
-        digitalWriteFast(DRV8833_ENABLE_PIN, LOW); // sleep when idle
+        digitalWriteFast(DRV8833_ENABLE_PIN, LOW);
       }
       break;
 
-    case PULSE_ON:
+    case START_PULSE_ON_FIRST:
+      // Fire first solenoid (SOL0) for start symbol
       if (tickCount == 0) {
-        bool bit = (currentByte >> bitIndex) & 1;
-        activePin = bit ? SOL1_PIN : SOL0_PIN;
-        digitalWriteFast(activePin, HIGH);
+          digitalWriteFast(SOL0_PIN, HIGH);
       }
-
       if (++tickCount >= PULSE_TICKS) {
-        digitalWriteFast(activePin, LOW);
+        digitalWriteFast(SOL0_PIN, LOW);
         tickCount = 0;
-        pulseState = PULSE_OFF;
+        pulseState = START_PULSE_OFF_FIRST;
       }
       break;
 
-    case PULSE_OFF:
+    case START_PULSE_OFF_FIRST:
+      // Short gap before second solenoid (just enough for power recovery)
       if (++tickCount >= GAP_TICKS) {
         tickCount = 0;
-        bitIndex--;
-        pulseState = (bitIndex < 0) ? IDLE : PULSE_ON;
+        pulseState = START_PULSE_ON_SECOND;
+      }
+      break;
+
+    case START_PULSE_ON_SECOND:
+      // Fire second solenoid (SOL1) for start symbol
+      if (tickCount == 0) {
+        digitalWriteFast(SOL1_PIN, HIGH);
+      }
+      if (++tickCount >= PULSE_TICKS) {
+        digitalWriteFast(SOL1_PIN, LOW);
+        tickCount = 0;
+        pulseState = START_PULSE_OFF_SECOND;
+      }
+      break;
+
+    case START_PULSE_OFF_SECOND:
+      // Gap after start symbol before first data bit
+      if (++tickCount >= GAP_TICKS) {
+        tickCount = 0;
+        pulseState = IDLE;
+      }
+      break;
+
+    case BIT_PULSE_ON:
+      // Fire single solenoid for bit
+      if (tickCount == 0) {
+          digitalWriteFast(activePin, HIGH);
+        }
+      if (++tickCount >= PULSE_TICKS) {
+        digitalWriteFast(SOL0_PIN, LOW);
+        digitalWriteFast(SOL1_PIN, LOW);
+        tickCount = 0;
+        pulseState = BIT_PULSE_OFF;
+      }
+      break;
+
+    case BIT_PULSE_OFF:
+      // Gap after bit before next item
+      if (++tickCount >= GAP_TICKS) {
+        tickCount = 0;
+        pulseState = IDLE;
       }
       break;
   }
@@ -379,38 +440,40 @@ void setup() {
 // -------------------------
 // Loop
 // -------------------------
-void loop() { usb.Task(); pollModifiers(); }
-
-// Poll for modifier state changes (some keyboards send modifiers in the report
-// modifier byte instead of as separate key press events). This captures those
-// changes and forwards them as the protocol modifier values (128..135).
-volatile uint8_t _last_mods = 0;
-
-void pollModifiers() {
-  // KeyboardController provides getModifiers() returning a modifier bitmask
-  uint8_t mods = 0;
-  // guard in case the method isn't available on some library versions
-  #if defined(__arm__) || defined(ARDUINO)
-  mods = keyboard.getModifiers();
-  #endif
-
-  if (mods == _last_mods) return;
-  uint8_t changed = mods ^ _last_mods;
-  for (uint8_t i = 0; i < 8; ++i) {
-    uint8_t mask = (1 << i);
-    if (changed & mask) {
-      uint8_t mod_val = 128 + i; // map bit to 128..135
-      if (mods & mask) {
-        Serial.print("MOD POLL PRESS bit="); Serial.print(i);
-        Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
-        bufPush(mod_val);
-      } else {
-        Serial.print("MOD POLL RELEASE bit="); Serial.print(i);
-        Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
-        bufPush(mod_val);
-      }
-    }
-  }
-  _last_mods = mods;
+void loop() { 
+  usb.Task(); 
+  // pollModifiers(); 
 }
 
+// // Poll for modifier state changes (some keyboards send modifiers in the report
+// // modifier byte instead of as separate key press events). This captures those
+// // changes and forwards them as the protocol modifier values (128..135).
+// volatile uint8_t _last_mods = 0;
+
+// void pollModifiers() {
+//   // KeyboardController provides getModifiers() returning a modifier bitmask
+//   uint8_t mods = 0;
+//   // guard in case the method isn't available on some library versions
+//   #if defined(__arm__) || defined(ARDUINO)
+//   mods = keyboard.getModifiers();
+//   #endif
+
+//   if (mods == _last_mods) return;
+//   uint8_t changed = mods ^ _last_mods;
+//   for (uint8_t i = 0; i < 8; ++i) {
+//     uint8_t mask = (1 << i);
+//     if (changed & mask) {
+//       uint8_t mod_val = 128 + i; // map bit to 128..135
+//       if (mods & mask) {
+//         Serial.print("MOD POLL PRESS bit="); Serial.print(i);
+//         Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
+//         enqueueByte(mod_val);
+//       } else {
+//         Serial.print("MOD POLL RELEASE bit="); Serial.print(i);
+//         Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
+//         enqueueByte(mod_val);
+//       }
+//     }
+//   }
+//   _last_mods = mods;
+// }
