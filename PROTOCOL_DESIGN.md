@@ -19,7 +19,9 @@ The protocol uses 8-bit values (0x00-0xFF) to represent all possible keyboard ac
 | 0xA0-0xAB   | Function Keys       | F1-F12                                           |
 | 0xAC-0xAF   | Reserved            | For future use                                   |
 | 0xB0        | Caps Lock           | Toggle Caps Lock                                 |
-| 0xB1-0xFF   | Reserved            | Future expansion                                 |
+| 0xB1        | Fn Press            | Fn key is pressed                                |
+| 0xB2        | Fn Release          | Fn key is released                               |
+| 0xB3-0xFF   | Reserved            | Future expansion                                 |
 
 ## Modifier Keys (0x80-0x8F)
 
@@ -67,7 +69,17 @@ The protocol uses 8-bit values (0x00-0xFF) to represent all possible keyboard ac
 | 0x9D | PAGE_DOWN          | Page Down                       |
 | 0x9E | CLEAR_BUFFER       | Emergency clear all keys        |
 
-## Function Keys (0xA0-0xAB)
+### Function Keys (0xA0-0xAB)
+
+Function keys F1-F12 are mapped to 0xA0-0xAB respectively.
+
+When the Fn key is pressed (0xB1) and held, pressing a function key will send a modified key combination. The default mapping is:
+
+- Fn+F1: Ctrl+F1
+- Fn+F2: Ctrl+F2
+- ...and so on for other F-keys
+
+You can customize these mappings in the `fn_mapping` dictionary in the RP2040 code.
 
 | Hex  | Keycode  | Description |
 |------|----------|-------------|
@@ -86,9 +98,11 @@ The protocol uses 8-bit values (0x00-0xFF) to represent all possible keyboard ac
 
 ## Special Keys
 
-| Hex  | Keycode  | Description         |
-|------|----------|---------------------|
-| 0xB0 | CAPS_LOCK| Toggle Caps Lock    |
+| Hex  | Keycode    | Description          |
+|------|------------|----------------------|
+| 0xB0 | CAPS_LOCK  | Toggle Caps Lock     |
+| 0xB1 | FN_PRESS   | Fn key pressed       |
+| 0xB2 | FN_RELEASE | Fn key released      |
 | 0x14 | 20      | Up Arrow      | Up arrow key                          |
 | 0x15 | 21      | Backspace     | Backspace key                         |
 | 0x16 | 22      | Enter         | Enter/Return key                      |

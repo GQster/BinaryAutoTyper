@@ -117,6 +117,8 @@ FUNC_MAP = {
 
 # Other special keys
 PROTO_CAPS_LOCK = 0xB0
+PROTO_FN_PRESS = 0xB1
+PROTO_FN_RELEASE = 0xB2
 
 def ascii_to_keypress(ch):
     """Convert ASCII char to (keycode, needs_shift)."""
@@ -185,9 +187,24 @@ def emergency_clear():
     state = STATE_WAIT_START_0
     bit_buffer = ""
 
+# Track Fn key state
+fn_pressed = False
+
 def process_byte(value):
     """Process a complete received byte"""
+    global fn_pressed
+    
     print("BYTE: 0x{:02X}".format(value))
+    
+    # Check for Fn key press/release
+    if value == PROTO_FN_PRESS:
+        fn_pressed = True
+        print("  FN PRESS")
+        return
+    elif value == PROTO_FN_RELEASE:
+        fn_pressed = False
+        print("  FN RELEASE")
+        return
     
     # Emergency clear command
     if value == PROTO_CLEAR_BUFFER:
@@ -220,8 +237,41 @@ def process_byte(value):
     if value in FUNC_MAP:
         kc = FUNC_MAP[value]
         print("  FUNC")
-        kpd.press(kc)
-        kpd.release(kc)
+        
+        # If Fn is pressed, send the Fn+function key combination
+        if fn_pressed:
+            print("  (with Fn)")
+            # On most keyboards, Fn+Function key sends a different HID code
+            # You may need to adjust these mappings based on your specific keyboard
+            # Define Fn+Function key combinations
+            # Format: Keycode.Fn: (modifier, key)
+            fn_mapping = {
+                Keycode.F1: (Keycode.LEFT_CONTROL, Keycode.F1),  # Fn+F1 = Ctrl+F1
+                Keycode.F2: (Keycode.LEFT_CONTROL, Keycode.F2),  # Fn+F2 = Ctrl+F2
+                Keycode.F3: (Keycode.LEFT_CONTROL, Keycode.F3),  # Fn+F3 = Ctrl+F3
+                Keycode.F4: (Keycode.LEFT_CONTROL, Keycode.F4),  # Fn+F4 = Ctrl+F4
+                Keycode.F5: (Keycode.LEFT_CONTROL, Keycode.F5),  # Fn+F5 = Ctrl+F5
+                Keycode.F6: (Keycode.LEFT_CONTROL, Keycode.F6),  # Fn+F6 = Ctrl+F6
+                Keycode.F7: (Keycode.LEFT_CONTROL, Keycode.F7),  # Fn+F7 = Ctrl+F7
+                Keycode.F8: (Keycode.LEFT_CONTROL, Keycode.F8),  # Fn+F8 = Ctrl+F8
+                Keycode.F9: (Keycode.LEFT_CONTROL, Keycode.F9),  # Fn+F9 = Ctrl+F9
+                Keycode.F10: (Keycode.LEFT_CONTROL, Keycode.F10), # Fn+F10 = Ctrl+F10
+                Keycode.F11: (Keycode.LEFT_CONTROL, Keycode.F11), # Fn+F11 = Ctrl+F11
+                Keycode.F12: (Keycode.LEFT_CONTROL, Keycode.F12)  # Fn+F12 = Ctrl+F12
+            }
+            
+            if kc in fn_mapping:
+                mod, key = fn_mapping[kc]
+                kpd.press(mod, key)
+                kpd.release_all()
+            else:
+                # Default behavior if no specific mapping
+                kpd.press(Keycode.LEFT_ALT, kc)
+                kpd.release_all()
+        else:
+            # Normal function key press
+            kpd.press(kc)
+            kpd.release(kc)
         return
     
     # Caps Lock

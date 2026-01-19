@@ -97,6 +97,8 @@ constexpr uint8_t PROTO_F12 = 0xAB;
 
 // Other special keys
 constexpr uint8_t PROTO_CAPS_LOCK = 0xB0;
+constexpr uint8_t PROTO_FN_PRESS = 0xB1;
+constexpr uint8_t PROTO_FN_RELEASE = 0xB2;
 
 // Convert HID scan code to ASCII (unshifted)
 // Returns 0 if not a printable key
@@ -434,6 +436,13 @@ void onKeyPress(int key) {
     return;
   }
 
+  // Check for Fn key (typically HID 0x3D-0x3E for Fn key)
+  if (raw == 0x3D || raw == 0x3E) {  // Common Fn key HID codes
+    // For key press, we'll always send PRESS first, then RELEASE in onKeyRelease
+    enqueueByte(PROTO_FN_PRESS);
+    return;
+  }
+  
   // Check if it's a navigation/special key
   uint8_t proto;
   if (isNavigationKey(raw, proto)) {
@@ -505,7 +514,12 @@ void onKeyPress(int key) {
 }
 
 void onKeyRelease(int key) {
-  // Nothing needed
+  uint8_t raw = (uint8_t)key;
+  
+  // Handle Fn key release
+  if (raw == 0x3D || raw == 0x3E) {  // Common Fn key HID codes
+    enqueueByte(PROTO_FN_RELEASE);
+  }
 }
 
 // Poll modifier state changes
