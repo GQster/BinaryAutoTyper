@@ -19,8 +19,7 @@ constexpr int SOL1_PIN = 2;
 constexpr int DRV8833_ENABLE_PIN = 5;
 
 // -------------------------
-// Timing (microseconds)
-// Tune these carefully
+// Timing (microseconds) (cant go faster)
 // -------------------------
 constexpr uint32_t PULSE_US = 25000; // solenoid on 
 constexpr uint32_t GAP_US   = 15000; // off between bits
@@ -36,116 +35,192 @@ constexpr uint32_t GAP_TICKS   = GAP_US   / TICK_US;
 constexpr int START_SYMBOL = 2; // Fire both solenoids for start symbol
 
 // -------------------------
-// Modifier key bit masks
+// Protocol values
+// 0x00-0x1F: Control chars (Ctrl+A=0x01 ... Ctrl+Z=0x1A)
+// 0x20-0x7F: Printable ASCII
+// 0x80-0x87: Modifier PRESS
+// 0x88-0x8F: Modifier RELEASE  
+// 0x90-0x9F: Navigation keys
+// 0xA0-0xAB: Function keys F1-F12
 // -------------------------
-constexpr uint8_t KEY_MOD_LCTRL  = 0x01;
-constexpr uint8_t KEY_MOD_LSHIFT = 0x02;
-constexpr uint8_t KEY_MOD_LALT   = 0x04;
-constexpr uint8_t KEY_MOD_LGUI   = 0x08;
-constexpr uint8_t KEY_MOD_RCTRL  = 0x10;
-constexpr uint8_t KEY_MOD_RSHIFT = 0x20;
-constexpr uint8_t KEY_MOD_RALT   = 0x40;
-constexpr uint8_t KEY_MOD_RGUI   = 0x80;
 
-// -------------------------
-// Protocol values (custom)
-// -------------------------
-constexpr uint8_t PROTO_RIGHT_ARROW = 0x10;
-constexpr uint8_t PROTO_LEFT_ARROW  = 0x11;
-constexpr uint8_t PROTO_DOWN_ARROW  = 0x12;
-constexpr uint8_t PROTO_UP_ARROW    = 0x13;
-constexpr uint8_t PROTO_BACKSPACE   = 0x14;
-constexpr uint8_t PROTO_ENTER       = 0x15;
-constexpr uint8_t PROTO_TAB         = 0x16;
-constexpr uint8_t PROTO_ESCAPE      = 0x17;
-constexpr uint8_t PROTO_DELETE      = 0x18;
-constexpr uint8_t PROTO_INSERT      = 0x19;
-constexpr uint8_t PROTO_HOME        = 0x1A;
-constexpr uint8_t PROTO_END         = 0x1B;
-constexpr uint8_t PROTO_PAGE_UP     = 0x1C;
-constexpr uint8_t PROTO_PAGE_DOWN   = 0x1D;
-// Use non-printable protocol values for F1..F12 so they aren't misread as digits
-constexpr uint8_t PROTO_F1 = 0x02;
-constexpr uint8_t PROTO_F2 = 0x03;
-constexpr uint8_t PROTO_F3 = 0x04;
-constexpr uint8_t PROTO_F4 = 0x05;
-constexpr uint8_t PROTO_F5 = 0x06;
-constexpr uint8_t PROTO_F6 = 0x07;
-constexpr uint8_t PROTO_F7 = 0x08;
-constexpr uint8_t PROTO_F8 = 0x09;
-constexpr uint8_t PROTO_F9 = 0x0A;
-constexpr uint8_t PROTO_F10 = 0x0B;
-constexpr uint8_t PROTO_F11 = 0x0C;
-constexpr uint8_t PROTO_F12 = 0x0D;
-// Combo protocol bytes for Ctrl+a..z (single atomic byte)
-const uint8_t PROTO_CTRL_A = 0x40;  // Ctrl+a through Ctrl+z at 0x40..0x59
+// Modifier PRESS
+constexpr uint8_t PROTO_MOD_LCTRL_PRESS  = 0x80;
+constexpr uint8_t PROTO_MOD_LSHIFT_PRESS = 0x81;
+constexpr uint8_t PROTO_MOD_LALT_PRESS   = 0x82;
+constexpr uint8_t PROTO_MOD_LGUI_PRESS   = 0x83;
+constexpr uint8_t PROTO_MOD_RCTRL_PRESS  = 0x84;
+constexpr uint8_t PROTO_MOD_RSHIFT_PRESS = 0x85;
+constexpr uint8_t PROTO_MOD_RALT_PRESS   = 0x86;
+constexpr uint8_t PROTO_MOD_RGUI_PRESS   = 0x87;
 
-// Helper: map raw HID usage to protocol byte. returns 0 and found=false if no mapping.
-uint8_t mapRawToProto(uint8_t raw, bool &found) {
-  found = true;
-  switch (raw) {
-    // Some host controllers report extended/raw values for arrows — accept both sets
-    case 0x4F: return PROTO_RIGHT_ARROW; // RIGHT
-    case 0x50: return PROTO_LEFT_ARROW;  // LEFT
-    case 0x51: return PROTO_DOWN_ARROW;  // DOWN
-    case 0x52: return PROTO_UP_ARROW;    // UP
-    // Alternate/raw codes observed on some keyboards/host stacks
-    case 0xD7: return PROTO_RIGHT_ARROW;
-    case 0xD8: return PROTO_LEFT_ARROW;
-    case 0xD9: return PROTO_DOWN_ARROW;
-    case 0xDA: return PROTO_UP_ARROW;
-    // More alternate/raw codes observed for navigation keys
-    case 0xD2: return PROTO_HOME;
-    case 0xD3: return PROTO_PAGE_UP;
-    case 0xD4: return PROTO_DELETE;
-    case 0xD5: return PROTO_END;
-    case 0xD6: return PROTO_PAGE_DOWN;
-    case 0x2A: return PROTO_BACKSPACE;   // Backspace (HID 0x2A)
-    case 0x7F: return PROTO_BACKSPACE;   // ASCII DEL -> Backspace
-    case 0x28: return PROTO_ENTER;       // Enter (Return)
-      // Alternate/ASCII codes sometimes seen for Enter: LF (0x0A) and CR (0x0D)
-      case 0x0A: return PROTO_ENTER;       // Line Feed
-      case 0x0D: return PROTO_ENTER;       // Carriage Return
-    case 0x2B: return PROTO_TAB;         // Tab
-      case 0x09: return PROTO_TAB;         // ASCII Tab (observed)
-    case 0x29: return PROTO_ESCAPE;      // Escape (HID)
-    case 0x1B: return PROTO_ESCAPE;      // ASCII ESC -> Escape
-    case 0x4C: return PROTO_DELETE;      // Delete
-    case 0x49: return PROTO_INSERT;      // Insert
-    case 0xD1: return PROTO_INSERT;      // Alternate/raw Insert observed
-    case 0x4A: return PROTO_PAGE_UP;     // Page Up
-    case 0x4B: return PROTO_PAGE_DOWN;   // Page Down
-    case 0x4D: return PROTO_HOME;        // Home
-    case 0x4E: return PROTO_END;         // End
-    // Standard HID F1..F12 usages (0x3A..0x45)
-    case 0x3A: return PROTO_F1;
-    case 0x3B: return PROTO_F2;
-    case 0x3C: return PROTO_F3;
-    case 0x3D: return PROTO_F4;
-    case 0x3E: return PROTO_F5;
-    case 0x3F: return PROTO_F6;
-    case 0x40: return PROTO_F7;
-    case 0x41: return PROTO_F8;
-    case 0x42: return PROTO_F9;
-    case 0x43: return PROTO_F10;
-    case 0x44: return PROTO_F11;
-    case 0x45: return PROTO_F12;
-    // Alternate/raw codes observed for F1..F12
-    case 0xC2: return PROTO_F1;
-    case 0xC3: return PROTO_F2;
-    case 0xC4: return PROTO_F3;
-    case 0xC5: return PROTO_F4;
-    case 0xC6: return PROTO_F5;
-    case 0xC7: return PROTO_F6;
-    case 0xC8: return PROTO_F7;
-    case 0xC9: return PROTO_F8;
-    case 0xCA: return PROTO_F9;
-    case 0xCB: return PROTO_F10;
-    case 0xCC: return PROTO_F11;
-    case 0xCD: return PROTO_F12;
-    default:
-      found = false;
-      return 0;
+// Modifier RELEASE
+constexpr uint8_t PROTO_MOD_LCTRL_REL  = 0x88;
+constexpr uint8_t PROTO_MOD_LSHIFT_REL = 0x89;
+constexpr uint8_t PROTO_MOD_LALT_REL   = 0x8A;
+constexpr uint8_t PROTO_MOD_LGUI_REL   = 0x8B;
+constexpr uint8_t PROTO_MOD_RCTRL_REL  = 0x8C;
+constexpr uint8_t PROTO_MOD_RSHIFT_REL = 0x8D;
+constexpr uint8_t PROTO_MOD_RALT_REL   = 0x8E;
+constexpr uint8_t PROTO_MOD_RGUI_REL   = 0x8F;
+
+// Navigation keys
+constexpr uint8_t PROTO_RIGHT_ARROW = 0x90;
+constexpr uint8_t PROTO_LEFT_ARROW  = 0x91;
+constexpr uint8_t PROTO_DOWN_ARROW  = 0x92;
+constexpr uint8_t PROTO_UP_ARROW    = 0x93;
+constexpr uint8_t PROTO_BACKSPACE   = 0x94;
+constexpr uint8_t PROTO_ENTER       = 0x95;
+constexpr uint8_t PROTO_TAB         = 0x96;
+constexpr uint8_t PROTO_ESCAPE      = 0x97;
+constexpr uint8_t PROTO_DELETE      = 0x98;
+constexpr uint8_t PROTO_INSERT      = 0x99;
+constexpr uint8_t PROTO_HOME        = 0x9A;
+constexpr uint8_t PROTO_END         = 0x9B;
+constexpr uint8_t PROTO_PAGE_UP     = 0x9C;
+constexpr uint8_t PROTO_PAGE_DOWN   = 0x9D;
+constexpr uint8_t PROTO_CLEAR_BUFFER = 0x9E;  // Emergency clear
+
+// Function keys
+constexpr uint8_t PROTO_F1  = 0xA0;
+constexpr uint8_t PROTO_F2  = 0xA1;
+constexpr uint8_t PROTO_F3  = 0xA2;
+constexpr uint8_t PROTO_F4  = 0xA3;
+constexpr uint8_t PROTO_F5  = 0xA4;
+constexpr uint8_t PROTO_F6  = 0xA5;
+constexpr uint8_t PROTO_F7  = 0xA6;
+constexpr uint8_t PROTO_F8  = 0xA7;
+constexpr uint8_t PROTO_F9  = 0xA8;
+constexpr uint8_t PROTO_F10 = 0xA9;
+constexpr uint8_t PROTO_F11 = 0xAA;
+constexpr uint8_t PROTO_F12 = 0xAB;
+
+// Other special keys
+constexpr uint8_t PROTO_CAPS_LOCK = 0xB0;
+
+// Convert HID scan code to ASCII (unshifted)
+// Returns 0 if not a printable key
+uint8_t hidToAsciiUnshifted(uint8_t hid) {
+  // Letters a-z (HID 0x04-0x1D)
+  if (hid >= 0x04 && hid <= 0x1D) {
+    return 'a' + (hid - 0x04);
+  }
+  // Numbers 1-9 (HID 0x1E-0x26)
+  if (hid >= 0x1E && hid <= 0x26) {
+    return '1' + (hid - 0x1E);
+  }
+  // Number 0 (HID 0x27)
+  if (hid == 0x27) return '0';
+  
+  // Punctuation
+  switch (hid) {
+    case 0x2C: return ' ';   // Space
+    case 0x2D: return '-';   // Minus
+    case 0x2E: return '=';   // Equals
+    case 0x2F: return '[';   // Left bracket
+    case 0x30: return ']';   // Right bracket
+    case 0x31: return '\\';  // Backslash
+    case 0x33: return ';';   // Semicolon
+    case 0x34: return '\'';  // Quote
+    case 0x35: return '`';   // Grave accent
+    case 0x36: return ',';   // Comma
+    case 0x37: return '.';   // Period
+    case 0x38: return '/';   // Slash
+    default: return 0;
+  }
+}
+
+// Convert HID scan code to ASCII (shifted)
+uint8_t hidToAsciiShifted(uint8_t hid) {
+  // Letters A-Z (HID 0x04-0x1D)
+  if (hid >= 0x04 && hid <= 0x1D) {
+    return 'A' + (hid - 0x04);
+  }
+  // Shifted numbers -> symbols
+  switch (hid) {
+    case 0x1E: return '!';  // Shift+1
+    case 0x1F: return '@';  // Shift+2
+    case 0x20: return '#';  // Shift+3
+    case 0x21: return '$';  // Shift+4
+    case 0x22: return '%';  // Shift+5
+    case 0x23: return '^';  // Shift+6
+    case 0x24: return '&';  // Shift+7
+    case 0x25: return '*';  // Shift+8
+    case 0x26: return '(';  // Shift+9
+    case 0x27: return ')';  // Shift+0
+    // Shifted punctuation
+    case 0x2C: return ' ';  // Space (same)
+    case 0x2D: return '_';  // Shift+minus
+    case 0x2E: return '+';  // Shift+equals
+    case 0x2F: return '{';  // Shift+[
+    case 0x30: return '}';  // Shift+]
+    case 0x31: return '|';  // Shift+backslash
+    case 0x33: return ':';  // Shift+semicolon
+    case 0x34: return '"';  // Shift+quote
+    case 0x35: return '~';  // Shift+grave
+    case 0x36: return '<';  // Shift+comma
+    case 0x37: return '>';  // Shift+period
+    case 0x38: return '?';  // Shift+slash
+    default: return 0;
+  }
+}
+
+// Check if HID code is a navigation/special key (not affected by shift for ASCII)
+bool isNavigationKey(uint8_t hid, uint8_t &proto) {
+  switch (hid) {
+    case 0x28: proto = PROTO_ENTER; return true;       // Enter
+    case 0x29: proto = PROTO_ESCAPE; return true;      // Escape
+    case 0x2A: proto = PROTO_BACKSPACE; return true;   // Backspace
+    case 0x2B: proto = PROTO_TAB; return true;         // Tab
+    case 0x39: proto = PROTO_CAPS_LOCK; return true;   // Caps Lock
+    case 0x4F: proto = PROTO_RIGHT_ARROW; return true;
+    case 0x50: proto = PROTO_LEFT_ARROW; return true;
+    case 0x51: proto = PROTO_DOWN_ARROW; return true;
+    case 0x52: proto = PROTO_UP_ARROW; return true;
+    case 0x49: proto = PROTO_INSERT; return true;
+    case 0x4A: proto = PROTO_HOME; return true;
+    case 0x4B: proto = PROTO_PAGE_UP; return true;
+    case 0x4C: proto = PROTO_DELETE; return true;
+    case 0x4D: proto = PROTO_END; return true;
+    case 0x4E: proto = PROTO_PAGE_DOWN; return true;
+    // Function keys
+    case 0x3A: proto = PROTO_F1; return true;
+    case 0x3B: proto = PROTO_F2; return true;
+    case 0x3C: proto = PROTO_F3; return true;
+    case 0x3D: proto = PROTO_F4; return true;
+    case 0x3E: proto = PROTO_F5; return true;
+    case 0x3F: proto = PROTO_F6; return true;
+    case 0x40: proto = PROTO_F7; return true;
+    case 0x41: proto = PROTO_F8; return true;
+    case 0x42: proto = PROTO_F9; return true;
+    case 0x43: proto = PROTO_F10; return true;
+    case 0x44: proto = PROTO_F11; return true;
+    case 0x45: proto = PROTO_F12; return true;
+    // Alternate codes (some keyboards)
+    case 0xC1: proto = PROTO_CAPS_LOCK; return true;
+    case 0xC2: proto = PROTO_F1; return true;
+    case 0xC3: proto = PROTO_F2; return true;
+    case 0xC4: proto = PROTO_F3; return true;
+    case 0xC5: proto = PROTO_F4; return true;
+    case 0xC6: proto = PROTO_F5; return true;
+    case 0xC7: proto = PROTO_F6; return true;
+    case 0xC8: proto = PROTO_F7; return true;
+    case 0xC9: proto = PROTO_F8; return true;
+    case 0xCA: proto = PROTO_F9; return true;
+    case 0xCB: proto = PROTO_F10; return true;
+    case 0xCC: proto = PROTO_F11; return true;
+    case 0xCD: proto = PROTO_F12; return true;
+    case 0xD1: proto = PROTO_INSERT; return true;
+    case 0xD2: proto = PROTO_HOME; return true;
+    case 0xD3: proto = PROTO_PAGE_UP; return true;
+    case 0xD4: proto = PROTO_DELETE; return true;
+    case 0xD5: proto = PROTO_END; return true;
+    case 0xD6: proto = PROTO_PAGE_DOWN; return true;
+    case 0xD7: proto = PROTO_RIGHT_ARROW; return true;
+    case 0xD8: proto = PROTO_LEFT_ARROW; return true;
+    case 0xD9: proto = PROTO_DOWN_ARROW; return true;
+    case 0xDA: proto = PROTO_UP_ARROW; return true;
+    default: return false;
   }
 }
 
@@ -157,13 +232,8 @@ volatile uint8_t buf[BUF_SIZE];
 volatile uint16_t head = 0;
 volatile uint16_t tail = 0;
 
-inline bool bufEmpty() {
-  return head == tail;
-}
-
-inline bool bufFull() {
-  return ((head + 1) % BUF_SIZE) == tail;
-}
+inline bool bufEmpty() { return head == tail; }
+inline bool bufFull() { return ((head + 1) % BUF_SIZE) == tail; }
 
 inline void bufPush(uint8_t v) {
   if (bufFull()) {
@@ -174,8 +244,20 @@ inline void bufPush(uint8_t v) {
   head = (head + 1) % BUF_SIZE;
 }
 
-// Enqueue a byte with start symbol prefix
-// Pushes: START_SYMBOL, bit7, bit6, bit5, bit4, bit3, bit2, bit1, bit0
+inline bool bufPop(uint8_t &v) {
+  if (bufEmpty()) return false;
+  v = buf[tail];
+  tail = (tail + 1) % BUF_SIZE;
+  return true;
+}
+
+void bufClear() {
+  noInterrupts();
+  head = 0;
+  tail = 0;
+  interrupts();
+}
+
 void enqueueByte(uint8_t v) {
   bufPush(START_SYMBOL);
   for (int i = 7; i >= 0; i--) {
@@ -183,11 +265,28 @@ void enqueueByte(uint8_t v) {
   }
 }
 
-inline bool bufPop(uint8_t &v) {
-  if (bufEmpty()) return false;
-  v = buf[tail];
-  tail = (tail + 1) % BUF_SIZE;
-  return true;
+// Helper to send modifier press bytes for currently held modifiers
+void sendModifierPresses(uint8_t mods) {
+  if (mods & 0x01) enqueueByte(PROTO_MOD_LCTRL_PRESS);
+  if (mods & 0x02) enqueueByte(PROTO_MOD_LSHIFT_PRESS);
+  if (mods & 0x04) enqueueByte(PROTO_MOD_LALT_PRESS);
+  if (mods & 0x08) enqueueByte(PROTO_MOD_LGUI_PRESS);
+  if (mods & 0x10) enqueueByte(PROTO_MOD_RCTRL_PRESS);
+  if (mods & 0x20) enqueueByte(PROTO_MOD_RSHIFT_PRESS);
+  if (mods & 0x40) enqueueByte(PROTO_MOD_RALT_PRESS);
+  if (mods & 0x80) enqueueByte(PROTO_MOD_RGUI_PRESS);
+}
+
+// Helper to send modifier release bytes
+void sendModifierReleases(uint8_t mods) {
+  if (mods & 0x01) enqueueByte(PROTO_MOD_LCTRL_REL);
+  if (mods & 0x02) enqueueByte(PROTO_MOD_LSHIFT_REL);
+  if (mods & 0x04) enqueueByte(PROTO_MOD_LALT_REL);
+  if (mods & 0x08) enqueueByte(PROTO_MOD_LGUI_REL);
+  if (mods & 0x10) enqueueByte(PROTO_MOD_RCTRL_REL);
+  if (mods & 0x20) enqueueByte(PROTO_MOD_RSHIFT_REL);
+  if (mods & 0x40) enqueueByte(PROTO_MOD_RALT_REL);
+  if (mods & 0x80) enqueueByte(PROTO_MOD_RGUI_REL);
 }
 
 // -------------------------
@@ -207,10 +306,26 @@ volatile PulseState pulseState = IDLE;
 volatile uint32_t tickCount = 0;
 volatile int activePin = SOL0_PIN;
 
-// -------------------------
-// Timer
-// -------------------------
 IntervalTimer solTimer;
+
+// -------------------------
+// Modifier tracking
+// -------------------------
+volatile uint8_t lastModifiers = 0;
+volatile uint8_t standaloneModsPressed = 0;  // Track which standalone modifiers we've sent press for
+volatile bool keyPressedWithMods = false;    // Flag: was a key pressed while modifiers held?
+
+// Pending GUI release (for Windows key tap detection)
+volatile uint8_t pendingGuiRelease = 0;
+volatile uint32_t guiPressTime = 0;
+constexpr uint32_t GUI_MIN_HOLD_MS = 50;  // Minimum time to hold GUI before release
+
+// -------------------------
+// Emergency exit tracking (3x ESC)
+// -------------------------
+volatile uint32_t escPressCount = 0;
+volatile uint32_t lastEscTime = 0;
+constexpr uint32_t ESC_WINDOW_MS = 500;  // 3 ESCs within 500ms
 
 // -------------------------
 // Keyboard callbacks
@@ -223,107 +338,244 @@ void onKeyPress(int key) {
     lastKeyTime = millis();
     uint8_t raw = (uint8_t)key;
 
-    // If the host callback gives a HID modifier usage (0xE0..0xE7), map to 128..135
-    if (raw >= 0xE0 && raw <= 0xE7) {
-      uint8_t mod_val = 128 + (raw - 0xE0); // 0xE0->128 ... 0xE7->135
-      Serial.print("onKeyPress MOD raw=0x"); Serial.print(raw, HEX);
-      Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
-      enqueueByte(mod_val);
-      return;
-    }
+  if (raw == 0x00) return;
 
-    // If printable ASCII, send the ASCII code ON PRESS only (handles Shift+number -> symbols)
-    if (raw >= 0x20 && raw <= 0x7E) {
-      uint8_t ascii_val = raw & 0x7F;
-      Serial.print("onKeyPress ASCII raw=0x"); Serial.print(raw, HEX);
-      Serial.print(" -> ascii=0x"); Serial.println(ascii_val, HEX);
-      enqueueByte(ascii_val);
+  // Get current modifier state RIGHT NOW
+  uint8_t mods = keyboard.getModifiers();
+    bool shiftHeld = (mods & 0x22) != 0;
+    bool ctrlHeld = (mods & 0x11) != 0;
+
+  Serial.print("onKeyPress raw=0x"); Serial.print(raw, HEX);
+  Serial.print(" mods=0x"); Serial.println(mods, HEX);
+
+  // Mark that a key was pressed with modifiers (so pollModifiers won't double-send)
+  if (mods != 0) {
+    keyPressedWithMods = true;
+    // Cancel any pending GUI release since a key was pressed with it
+    pendingGuiRelease = 0;
+  }
+
+  // Handle ASCII control codes that should be navigation keys
+    // These come through when the library auto-converts certain keys
+    
+    // Backspace comes as 0x08 (ASCII BS) or 0x7F (ASCII DEL)
+    if (raw == 0x08 || raw == 0x7F) {
+        Serial.println("  -> Backspace (from ASCII)");
+        if (mods != 0) sendModifierPresses(mods);
+        enqueueByte(PROTO_BACKSPACE);
+        if (mods != 0) sendModifierReleases(mods);
+        return;
+    }
+    
+    // Enter comes as 0x0A (LF) or 0x0D (CR)
+    if (raw == 0x0A || raw == 0x0D) {
+        Serial.println("  -> Enter (from ASCII)");
+        if (mods != 0) sendModifierPresses(mods);
+        enqueueByte(PROTO_ENTER);
+        if (mods != 0) sendModifierReleases(mods);
+        return;
+    }
+    
+    // Tab comes as 0x09
+    if (raw == 0x09) {
+        Serial.println("  -> Tab (from ASCII)");
+        if (mods != 0) sendModifierPresses(mods);
+        enqueueByte(PROTO_TAB);
+        if (mods != 0) sendModifierReleases(mods);
+        return;
+    }
+    
+    // Escape comes as 0x1B
+    if (raw == 0x1B) {
+        Serial.println("  -> Escape (from ASCII)");
+        
+        // ESC emergency exit handling
+        uint32_t now = millis();
+        if (now - lastEscTime < ESC_WINDOW_MS) {
+            escPressCount++;
+        } else {
+            escPressCount = 1;
+        }
+        lastEscTime = now;
+        
+        if (escPressCount >= 3) {
+            Serial.println("!!! EMERGENCY CLEAR - 3x ESC !!!");
+            bufClear();
+            escPressCount = 0;
+            enqueueByte(PROTO_CLEAR_BUFFER);
+            return;
+        }
+        
+        if (mods != 0) sendModifierPresses(mods);
+        enqueueByte(PROTO_ESCAPE);
+        if (mods != 0) sendModifierReleases(mods);
+        return;
+    }
+    
+  // Check if it's already printable ASCII (0x20-0x7E)
+  // Some keyboard modes give ASCII directly
+  if (raw >= 0x20 && raw <= 0x7E) {
+    Serial.print("  -> Direct ASCII: '"); Serial.print((char)raw); Serial.println("'");
+    uint8_t modsToSend = mods & 0xCC;  // Alt and GUI only
+    if (modsToSend != 0) {
+      sendModifierPresses(modsToSend);
+      enqueueByte(raw);
+      sendModifierReleases(modsToSend);
+    } else {
+      enqueueByte(raw);
+    }
+    return;
+  }
+
+  // Check for Ctrl+letter (0x01-0x1A)
+  if (raw >= 0x01 && raw <= 0x1A) {
+    Serial.print("  -> Ctrl+"); Serial.println((char)('a' + raw - 1));
+    enqueueByte(raw);
+    return;
+  }
+
+  // Check if it's a navigation/special key
+  uint8_t proto;
+  if (isNavigationKey(raw, proto)) {
+    // Special handling: if it's Backspace/Enter/Tab/Escape and NO shift held,
+    // treat as navigation. If shift IS held, we still send as navigation but
+    // with modifiers for combos like Shift+Enter
+    
+    // ESC emergency exit
+    if (proto == PROTO_ESCAPE) {
+    uint32_t now = millis();
+    if (now - lastEscTime < ESC_WINDOW_MS) {
+      escPressCount++;
+    } else {
+      escPressCount = 1;
+    }
+    lastEscTime = now;
+    
+    if (escPressCount >= 3) {
+      Serial.println("!!! EMERGENCY CLEAR - 3x ESC !!!");
+      bufClear();
+      escPressCount = 0;
+      enqueueByte(PROTO_CLEAR_BUFFER);
       return;
     }
-    // Handle control ASCII and alternate/raw HID usages via mapping first
-    bool found;
-    uint8_t proto = mapRawToProto(raw, found);
-    if (found) {
-      Serial.print("onKeyPress MAP raw=0x"); Serial.print(raw, HEX);
-      Serial.print(" -> proto=0x"); Serial.println(proto, HEX);
+  } else {
+    escPressCount = 0;  // Reset if non-ESC key pressed
+  }
+
+    Serial.print("  -> Nav key proto=0x"); Serial.println(proto, HEX);
+    if (mods != 0) sendModifierPresses(mods);
       enqueueByte(proto);
+    if (mods != 0) sendModifierReleases(mods);
       return;
     }
 
-    // Some hosts deliver Ctrl+letter as ASCII control codes (0x01..0x1A).
-    // Emit a single combo proto byte for atomic Ctrl+<letter> handling on receiver.
-    if (raw >= 0x01 && raw <= 0x1A) {
-      uint8_t letter_index = raw - 1; // 0 -> 'a'
-      uint8_t combo_proto = PROTO_CTRL_A + letter_index;
-      Serial.print("onKeyPress CTL raw=0x"); Serial.print(raw, HEX);
-      Serial.print(" -> combo=0x"); Serial.println(combo_proto, HEX);
-      enqueueByte(combo_proto);
+  // It's an HID scan code for a printable key - convert to ASCII
+  uint8_t ascii;
+  if (shiftHeld && !ctrlHeld) {
+    ascii = hidToAsciiShifted(raw);
+  } else {
+    ascii = hidToAsciiUnshifted(raw);
+  }
+
+  if (ascii != 0) {
+    Serial.print("  -> HID->ASCII: '"); Serial.print((char)ascii); Serial.println("'");
+    
+    // For Alt+key or GUI+key combos
+    uint8_t modsToSend = mods & 0xCC;  // Alt and GUI only
+    if (modsToSend != 0) {
+      sendModifierPresses(modsToSend);
+      enqueueByte(ascii);
+      sendModifierReleases(modsToSend);
+    } else {
+      enqueueByte(ascii);
+    }
+    return;
+  }
+
+  // Ctrl+letter gives HID code, convert to control character
+  if (ctrlHeld && raw >= 0x04 && raw <= 0x1D) {
+    uint8_t ctrlChar = 1 + (raw - 0x04);  // Ctrl+A = 0x01, Ctrl+B = 0x02, etc.
+    Serial.print("  -> Ctrl+"); Serial.print((char)('a' + raw - 0x04));
+    Serial.print(" = 0x"); Serial.println(ctrlChar, HEX);
+    enqueueByte(ctrlChar);
       return;
     }
 
-    // Unknown non-printable: ignore to avoid sending raw HID values that confuse receiver
-    Serial.print("onKeyPress IGNORE raw=0x"); Serial.println(raw, HEX);
+  Serial.println("  -> IGNORED");
 }
 
 void onKeyRelease(int key) {
-    if (millis() - lastKeyTime < DEBOUNCE_MS) return;
-    lastKeyTime = millis();
-    uint8_t raw = (uint8_t)key;
-
-    // If modifier release, send same modifier value so receiver toggles state
-    if (raw >= 0xE0 && raw <= 0xE7) {
-      uint8_t mod_val = 128 + (raw - 0xE0);
-      Serial.print("onKeyRelease MOD raw=0x"); Serial.print(raw, HEX);
-      Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
-      enqueueByte(mod_val);
-      return;
-    }
-
-    // Map selected non-ASCII HID usages to protocol bytes on release as well
-    // For non-modifier mapped keys (arrows, backspace, etc.) we handled on press,
-    // so ignore their releases to avoid double-sending.
-    bool foundRel;
-    uint8_t protoRel = mapRawToProto(raw, foundRel);
-    if (foundRel) {
-      Serial.print("onKeyRelease MAP ignored raw=0x"); Serial.print(raw, HEX);
-      Serial.print(" -> proto=0x"); Serial.println(protoRel, HEX);
-      return;
-    }
-
-    // Handle ASCII control codes (Ctrl+letter) on release by ignoring (atomic on press)
-    if (raw >= 0x01 && raw <= 0x1A) {
-      Serial.print("onKeyRelease CTL ignored raw=0x"); Serial.println(raw, HEX);
-      return;
-    }
-
-    // Non-modifier releases are ignored for the ASCII protocol
-    if (raw >= 0x20 && raw <= 0x7F) {
-      Serial.print("onKeyRelease ASCII ignored raw=0x"); Serial.println(raw, HEX);
-      return;
-    }
-
-    // Map selected non-ASCII HID usages to protocol bytes on release as well
-    // For non-modifier mapped keys (arrows, backspace, etc.) we handled on press,
-    // so ignore their releases to avoid double-sending.
-    bool found;
-    uint8_t proto = mapRawToProto(raw, found);
-    if (found) {
-      Serial.print("onKeyRelease MAP ignored raw=0x"); Serial.print(raw, HEX);
-      Serial.print(" -> proto=0x"); Serial.println(proto, HEX);
-      return;
-    }
-
-    Serial.print("onKeyRelease IGNORE raw=0x"); Serial.println(raw, HEX);
+  // Nothing needed
 }
 
+// Poll modifier state changes
+void pollModifiers() {
+  uint8_t mods = keyboard.getModifiers();
+  uint32_t now = millis();
+  
+  // Check for pending GUI release
+  if (pendingGuiRelease != 0 && (now - guiPressTime) >= GUI_MIN_HOLD_MS) {
+    sendModifierReleases(pendingGuiRelease);
+    standaloneModsPressed &= ~pendingGuiRelease;
+    pendingGuiRelease = 0;
+  }
+  
+  if (mods == lastModifiers) return;
+  
+  uint8_t changed = mods ^ lastModifiers;
+  uint8_t pressed = changed & mods;
+  uint8_t released = changed & ~mods;
+  
+  if (keyPressedWithMods) {
+    Serial.println("  -> Skipping (key was pressed with mods)");
+    keyPressedWithMods = false;
+    lastModifiers = mods;
+    return;
+  }
+  
+  // Standalone GUI and Alt
+  uint8_t standaloneMask = 0xCC;
+  uint8_t guiMask = 0x88;  // LGUI and RGUI
+  
+  // Send presses for standalone modifiers
+  uint8_t standalonePressed = pressed & standaloneMask;
+  if (standalonePressed) {
+    sendModifierPresses(standalonePressed);
+    standaloneModsPressed |= standalonePressed;
+    
+    // Track GUI press time
+    if (standalonePressed & guiMask) {
+      guiPressTime = now;
+    }
+  }
+  
+  // Send releases for standalone modifiers
+  uint8_t standaloneReleased = released & standaloneMask;
+  if (standaloneReleased) {
+    // For GUI keys, delay the release to ensure minimum hold time
+    uint8_t guiReleased = standaloneReleased & guiMask;
+    uint8_t otherReleased = standaloneReleased & ~guiMask;
+    
+    if (otherReleased) {
+      sendModifierReleases(otherReleased);
+      standaloneModsPressed &= ~otherReleased;
+    }
+    
+    if (guiReleased) {
+      if ((now - guiPressTime) >= GUI_MIN_HOLD_MS) {
+        sendModifierReleases(guiReleased);
+        standaloneModsPressed &= ~guiReleased;
+      } else {
+        pendingGuiRelease = guiReleased;
+      }
+    }
+  }
 
+  lastModifiers = mods;
+}
 
 // -------------------------
-// Solenoid ISR (HARD REAL-TIME)
-// Each buffer entry is processed as a single solenoid action:
-// - START_SYMBOL (2): fire SOL0, then SOL1 (staggered for power)
-// - 0: fire SOL0 only
-// - 1: fire SOL1 only
+// Solenoid ISR
 // -------------------------
 void solenoidISR() {
   uint8_t symbol = 0;
@@ -350,10 +602,7 @@ void solenoidISR() {
       break;
 
     case START_PULSE_ON_FIRST:
-      // Fire first solenoid (SOL0) for start symbol
-      if (tickCount == 0) {
-          digitalWriteFast(SOL0_PIN, HIGH);
-      }
+      if (tickCount == 0) digitalWriteFast(SOL0_PIN, HIGH);
       if (++tickCount >= PULSE_TICKS) {
         digitalWriteFast(SOL0_PIN, LOW);
         tickCount = 0;
@@ -371,9 +620,7 @@ void solenoidISR() {
 
     case START_PULSE_ON_SECOND:
       // Fire second solenoid (SOL1) for start symbol
-      if (tickCount == 0) {
-        digitalWriteFast(SOL1_PIN, HIGH);
-      }
+      if (tickCount == 0) {digitalWriteFast(SOL1_PIN, HIGH);}
       if (++tickCount >= PULSE_TICKS) {
         digitalWriteFast(SOL1_PIN, LOW);
         tickCount = 0;
@@ -391,9 +638,7 @@ void solenoidISR() {
 
     case BIT_PULSE_ON:
       // Fire single solenoid for bit
-      if (tickCount == 0) {
-          digitalWriteFast(activePin, HIGH);
-        }
+      if (tickCount == 0) {digitalWriteFast(activePin, HIGH);}
       if (++tickCount >= PULSE_TICKS) {
         digitalWriteFast(SOL0_PIN, LOW);
         digitalWriteFast(SOL1_PIN, LOW);
@@ -419,7 +664,6 @@ void setup() {
   pinMode(SOL0_PIN, OUTPUT); digitalWrite(SOL0_PIN, LOW);
   pinMode(SOL1_PIN, OUTPUT); digitalWrite(SOL1_PIN, LOW);
 
-
   // Enable the DRV8833 board
   pinMode(DRV8833_ENABLE_PIN, OUTPUT); digitalWrite(DRV8833_ENABLE_PIN, HIGH);
 
@@ -434,46 +678,21 @@ void setup() {
   // Start solenoid timer
   solTimer.begin(solenoidISR, TICK_US);
 
-  Serial.println("USB host ready — ISR-driven solenoid engine running");
+  Serial.println("USB host ready - 3x ESC for emergency clear");
 }
 
 // -------------------------
 // Loop
 // -------------------------
-void loop() { 
-  usb.Task(); 
-  // pollModifiers(); 
+void loop() {
+  usb.Task();
+  pollModifiers();
+  
+  // // Continuously monitor modifier state
+  // static uint8_t lastDebugMods = 0xFF;
+  // uint8_t mods = keyboard.getModifiers();
+  // if (mods != lastDebugMods) {
+  //   Serial.print("DEBUG MODS: 0x"); Serial.println(mods, HEX);
+  //   lastDebugMods = mods;
+  // }
 }
-
-// // Poll for modifier state changes (some keyboards send modifiers in the report
-// // modifier byte instead of as separate key press events). This captures those
-// // changes and forwards them as the protocol modifier values (128..135).
-// volatile uint8_t _last_mods = 0;
-
-// void pollModifiers() {
-//   // KeyboardController provides getModifiers() returning a modifier bitmask
-//   uint8_t mods = 0;
-//   // guard in case the method isn't available on some library versions
-//   #if defined(__arm__) || defined(ARDUINO)
-//   mods = keyboard.getModifiers();
-//   #endif
-
-//   if (mods == _last_mods) return;
-//   uint8_t changed = mods ^ _last_mods;
-//   for (uint8_t i = 0; i < 8; ++i) {
-//     uint8_t mask = (1 << i);
-//     if (changed & mask) {
-//       uint8_t mod_val = 128 + i; // map bit to 128..135
-//       if (mods & mask) {
-//         Serial.print("MOD POLL PRESS bit="); Serial.print(i);
-//         Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
-//         enqueueByte(mod_val);
-//       } else {
-//         Serial.print("MOD POLL RELEASE bit="); Serial.print(i);
-//         Serial.print(" -> mod=0x"); Serial.println(mod_val, HEX);
-//         enqueueByte(mod_val);
-//       }
-//     }
-//   }
-//   _last_mods = mods;
-// }
