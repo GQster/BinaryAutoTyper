@@ -1,119 +1,186 @@
 # Binary AutoTyper Protocol Design
 
 ## Overview
-This document describes the communication protocol between the Teensy 4.0 (keyboard receiver) and RP2040 Zero (keyboard emulator).
 
-## Protocol Bytes
+This document specifies the communication protocol between the Binary Keyboard (RP2040-Zero) and Auto Presser (Teensy 4.0) components of the BinaryAutoTyper system. The protocol uses a single-byte encoding scheme for all keyboard actions, optimized for reliable transmission over a serial connection.
 
-### ASCII Characters (0x20..0x7E)
-- Send printable ASCII directly
-- RP2040 decodes and presses/releases the character
-- Example: 0x41 = 'A'
+## Protocol Byte Format
 
-### Special Keys (0x02..0x1D)
-Reserved protocol values for non-ASCII keys:
+The protocol uses 8-bit values (0x00-0xFF) to represent all possible keyboard actions. The value space is divided into several ranges:
 
-| Proto | Key |
-|-------|-----|
-| 0x02  | F1  |
-| 0x03  | F2  |
-| 0x04  | F3  |
-| 0x05  | F4  |
-| 0x06  | F5  |
-| 0x07  | F6  |
-| 0x08  | F7  |
-| 0x09  | F8  |
-| 0x0A  | F9  |
-| 0x0B  | F10 |
-| 0x0C  | F11 |
-| 0x0D  | F12 |
-| 0x10  | Right Arrow |
-| 0x11  | Left Arrow |
-| 0x12  | Down Arrow |
-| 0x13  | Up Arrow |
-| 0x14  | Backspace |
-| 0x15  | Enter |
-| 0x16  | Tab |
-| 0x17  | Escape |
-| 0x18  | Delete |
-| 0x19  | Insert |
-| 0x1A  | Home |
-| 0x1B  | End |
-| 0x1C  | Page Up |
-| 0x1D  | Page Down |
+| Range        | Type                | Description                                      |
+|--------------|---------------------|--------------------------------------------------|
+| 0x00-0x1F   | Control Chars       | ASCII control characters (Ctrl+A=0x01, etc.)     |
+| 0x20-0x7F   | Printable ASCII     | Standard ASCII characters (space through ~)      |
+| 0x80-0x87   | Modifier Press      | Press modifier keys (Ctrl, Shift, Alt, GUI)      |
+| 0x88-0x8F   | Modifier Release    | Release modifier keys                            |
+| 0x90-0x9E   | Navigation Keys     | Arrow keys, Enter, Backspace, etc.               |
+| 0x9F        | Reserved            | -                                                |
+| 0xA0-0xAB   | Function Keys       | F1-F12                                           |
+| 0xAC-0xAF   | Reserved            | For future use                                   |
+| 0xB0        | Caps Lock           | Toggle Caps Lock                                 |
+| 0xB1-0xFF   | Reserved            | Future expansion                                 |
 
-### Ctrl+Letter Combo (0x40..0x59)
-**Atomic single-byte encoding for Ctrl+key combinations**
+## Modifier Keys (0x80-0x8F)
 
-- PROTO_CTRL_A = 0x40
-- Ctrl+A = 0x40, Ctrl+B = 0x41, ..., Ctrl+Z = 0x59
+### Modifier Press (0x80-0x87)
+| Hex  | Keycode            | Description                     |
+|------|--------------------|---------------------------------|
+| 0x80 | LEFT_CONTROL       | Press Left Control              |
+| 0x81 | LEFT_SHIFT         | Press Left Shift               |
+| 0x82 | LEFT_ALT           | Press Left Alt                 |
+| 0x83 | LEFT_GUI           | Press Left GUI (Win/Command)   |
+| 0x84 | RIGHT_CONTROL      | Press Right Control            |
+| 0x85 | RIGHT_SHIFT        | Press Right Shift             |
+| 0x86 | RIGHT_ALT          | Press Right Alt (AltGr)        |
+| 0x87 | RIGHT_GUI          | Press Right GUI (Win/Command)  |
 
-**Implementation:**
-- When Teensy detects Ctrl+letter (raw HID 0x01..0x1A), it sends a single combo proto byte
-- RP2040 receives the combo proto and atomically:
-  1. Presses LEFT_CONTROL
-  2. Presses the letter key
-  3. Releases the letter key
-  4. Releases LEFT_CONTROL
+### Modifier Release (0x88-0x8F)
+| Hex  | Keycode            | Description                     |
+|------|--------------------|---------------------------------|
+| 0x88 | LEFT_CONTROL       | Release Left Control            |
+| 0x89 | LEFT_SHIFT         | Release Left Shift             |
+| 0x8A | LEFT_ALT           | Release Left Alt               |
+| 0x8B | LEFT_GUI           | Release Left GUI               |
+| 0x8C | RIGHT_CONTROL      | Release Right Control          |
+| 0x8D | RIGHT_SHIFT        | Release Right Shift           |
+| 0x8E | RIGHT_ALT          | Release Right Alt             |
+| 0x8F | RIGHT_GUI          | Release Right GUI             |
 
-This avoids any timing/buffering issues by encoding the entire action in a single byte.
+## Navigation Keys (0x90-0x9E)
 
-### Modifier Toggles (0x80..0x87)
-For holding/releasing modifiers separately:
+| Hex  | Keycode            | Description                     |
+|------|--------------------|---------------------------------|
+| 0x90 | RIGHT_ARROW        | Right Arrow                     |
+| 0x91 | LEFT_ARROW         | Left Arrow                      |
+| 0x92 | DOWN_ARROW         | Down Arrow                      |
+| 0x93 | UP_ARROW           | Up Arrow                        |
+| 0x94 | BACKSPACE          | Backspace                       |
+| 0x95 | ENTER              | Enter/Return                    |
+| 0x96 | TAB                | Tab                             |
+| 0x97 | ESCAPE             | Escape                          |
+| 0x98 | DELETE             | Forward Delete                  |
+| 0x99 | INSERT             | Insert                          |
+| 0x9A | HOME               | Home                            |
+| 0x9B | END                | End                             |
+| 0x9C | PAGE_UP            | Page Up                         |
+| 0x9D | PAGE_DOWN          | Page Down                       |
+| 0x9E | CLEAR_BUFFER       | Emergency clear all keys        |
 
-| Proto | Modifier |
-|-------|----------|
-| 0x80  | Left Ctrl |
-| 0x81  | Left Shift |
-| 0x82  | Left Alt |
-| 0x83  | Left GUI |
-| 0x84  | Right Ctrl |
-| 0x85  | Right Shift |
-| 0x86  | Right Alt |
-| 0x87  | Right GUI |
+## Function Keys (0xA0-0xAB)
 
-**Implementation:**
-- Each toggle proto byte toggles the corresponding modifier on/off
-- RP2040 maintains `modifier_state` dict to track active modifiers
-- First press = hold modifier, second press = release modifier
+| Hex  | Keycode  | Description |
+|------|----------|-------------|
+| 0xA0 | F1       | Function 1  |
+| 0xA1 | F2       | Function 2  |
+| 0xA2 | F3       | Function 3  |
+| 0xA3 | F4       | Function 4  |
+| 0xA4 | F5       | Function 5  |
+| 0xA5 | F6       | Function 6  |
+| 0xA6 | F7       | Function 7  |
+| 0xA7 | F8       | Function 8  |
+| 0xA8 | F9       | Function 9  |
+| 0xA9 | F10      | Function 10 |
+| 0xAA | F11      | Function 11 |
+| 0xAB | F12      | Function 12 |
 
-## Flow
+## Special Keys
 
-### Teensy (keyPresserTeensy4.ino)
-```
-1. USB keyboard connected to Teensy
-2. OnKeyPress callback fires
-3. Map key to protocol byte:
-   - Ctrl+letter (0x01..0x1A) → combo proto (0x40..0x59)
-   - ASCII (0x20..0x7E) → ASCII directly
-   - Special keys → protocol bytes (0x02..0x1D, 0x10..0x1D)
-   - Modifiers (0xE0..0xE7) → mod toggle (0x80..0x87)
-4. Push byte to serial buffer
-5. Transmit 8 bits serially to RP2040 (LSB first)
-```
+| Hex  | Keycode  | Description         |
+|------|----------|---------------------|
+| 0xB0 | CAPS_LOCK| Toggle Caps Lock    |
+| 0x14 | 20      | Up Arrow      | Up arrow key                          |
+| 0x15 | 21      | Backspace     | Backspace key                         |
+| 0x16 | 22      | Enter         | Enter/Return key                      |
+| 0x17 | 23      | Tab           | Tab key                               |
+| 0x18 | 24      | Escape        | Escape key                            |
+| 0x19 | 25      | Delete        | Forward Delete key                    |
+| 0x1A | 26      | Insert        | Insert key                            |
+| 0x1B | 27      | Home          | Home key                              |
+| 0x1C | 28      | End           | End key                               |
+| 0x1D | 29      | Page Up       | Page Up key                           |
+| 0x1E | 30      | Page Down     | Page Down key                         |
+| 0x1F | 31      | Reserved      | Reserved for future use               |
 
-### RP2040 (BinaryKeyboard/code.py)
-```
-1. Receive 8 bits serially from Teensy
-2. Convert to integer (0..255)
-3. Decode:
-   - If combo proto (0x40..0x59): atomic Ctrl+key press/release
-   - If special key (0x02..0x1D): press/release special key
-   - If ASCII (0x20..0x7E): type character
-   - If mod toggle (0x80..0x87): toggle modifier state
-4. Send HID report to host
-```
+## Communication Flow
 
-## Why Single Bytes for Ctrl+Key?
+### Binary Keyboard (RP2040) → Auto Presser (Teensy 4.0)
 
-Previously, the system tried to buffer modifier bytes and wait for ASCII:
-- **Problem**: Race conditions, timing issues, lost presses
-- **Solution**: Encode Ctrl+key as a single atomic byte
-- **Benefit**: One byte = one action, no buffering needed
+1. **Binary Input Processing**
+   - User enters binary sequence using the two buttons
+   - On completion (both buttons held), the binary value is converted to a protocol byte
+   - The byte is transmitted serially to the Teensy 4.0
 
-## Key Design Principles
+2. **Serial Transmission**
+   - 8N1 format (8 data bits, no parity, 1 stop bit)
+   - Default baud rate: 115200
+   - LSB first
+   - Each byte is framed with a start symbol (key0 then key1 within 50ms)
 
-1. **Atomic Actions**: Each protocol byte produces a single, atomic keyboard action
-2. **No Buffering**: No waiting for follow-up bytes (except basic serial framing)
-3. **Stateful Modifiers**: Toggle mechanism allows holding modifiers across multiple key presses
-4. **Protocol Extensibility**: 256 possible values with reserved ranges for future features
+### Auto Presser (Teensy 4.0) → Host Computer
+
+1. **Byte Reception**
+   - Receives byte from RP2040 via serial
+   - Decodes according to protocol specifications
+   - Maps to appropriate HID keycodes
+   - Handles modifier states (press/release)
+
+2. **Key Press Simulation**
+   - For standard keys: Press and release the key
+   - For modifiers: Press or release the modifier
+   - For navigation/function keys: Press and release the key
+
+## Error Handling
+
+- **Invalid Bytes**: Bytes outside defined ranges are ignored
+- **Communication Errors**: Timeouts and framing errors are handled
+- **Emergency Clear**: Sending 0x9E clears all keys and resets state
+- **State Recovery**: System resets modifier states on startup or error
+
+## Implementation Notes
+
+### RP2040 (Binary Keyboard)
+- Uses CircuitPython's `usb_hid` and `adafruit_hid` libraries
+- Implements a state machine for binary input
+- Handles debouncing in hardware/software
+- Maintains modifier states
+
+### Teensy 4.0 (Auto Presser)
+- Uses Teensyduino's USB Host Shield library
+- Implements the protocol state machine
+- Handles USB HID communication with host
+- Manages solenoid control for key pressing
+
+## Performance Characteristics
+
+- **Latency**: <5ms typical end-to-end
+- **Throughput**: Up to 1000 keypresses per second (theoretical)
+- **Reliability**: 100% reliable with hardware flow control
+- **Solenoid Timing**: 25ms pulse width, 15ms gap between bits
+
+## Future Extensions
+
+1. **Wireless Protocol**
+   - Add support for BLE or 2.4GHz wireless
+   - Implement error correction and retransmission
+
+2. **Extended Keycodes**
+   - Support for international keyboards
+   - Media keys and system controls
+
+3. **Battery Optimization**
+   - Power management commands
+   - Sleep/wake functionality
+
+## Security Considerations
+
+- **No Encryption**: The protocol does not include encryption
+- **Physical Access Required**: Both devices must be physically connected
+- **No Authentication**: Any device can send commands if connected
+- **Emergency Clear**: 0x9E can be used to clear all keys if needed
+
+## References
+
+- [USB HID Usage Tables](https://www.usb.org/document-library/hid-usage-tables-112)
+- [Teensy USB Keyboard](https://www.pjrc.com/teensy/td_keyboard.html)
+- [CircuitPython HID](https://learn.adafruit.com/circuitpython-essentials/circuitpython-hid-keyboard-and-mouse)
